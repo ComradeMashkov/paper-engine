@@ -3,6 +3,8 @@
 namespace paper::editor {
 SDL_Window* wrapNativeWindow(WId id) {
     NSView* view = reinterpret_cast<NSView*>(id);
+    NSView* hostContent = [[view window] contentView];
+    NSView* hostParent = [view superview];
     NSResponder* viewResponder = [view nextResponder];
     NSResponder* windowResponder = [[view window] nextResponder];
     const auto properties = SDL_CreateProperties();
@@ -15,6 +17,11 @@ SDL_Window* wrapNativeWindow(WId id) {
     [view setNextResponder:viewResponder];
     [[view window] setNextResponder:windowResponder];
     SDL_DestroyProperties(properties);
+    if ([[view window] contentView] != hostContent || [view superview] != hostParent) {
+        SDL_DestroyWindow(result);
+        throw std::runtime_error(
+            "SDL changed the Qt view hierarchy; rebuild with the current Cocoa patch");
+    }
     return result;
 }
 } // namespace paper::editor

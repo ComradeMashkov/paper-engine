@@ -1,100 +1,119 @@
-# First editor slice — 2026-09-23
+# Qt scene editor — 2026-09-23
 
-This is an implementation/build milestone. No application, editor, test executable
-or CTest has been run for this work. Human usability and native viewport acceptance
-are explicitly outstanding. The code is not a completed Unity/Unreal equivalent.
+The editor now supports a complete existing-scene editing cycle. macOS Qt 6.9.0
+integration tests have executed native rendering, dock visibility, window resize,
+create/edit/duplicate/delete/reparent, undo/redo across Save, resource placement
+and reopening saved projects on temporary copies. This is an early authoring tool,
+not a completed Unity/Unreal equivalent. Human visual/usability acceptance, other
+platforms and recovery remain outstanding.
 
-## Ownership and behavior
+## Workspace and controls
 
-Qt 6 Widgets owns the main window, menus, docks, controls, focus and native event
-loop. `Viewport` embeds the existing SDL3 GPU renderer, without per-frame CPU image
-readback. Cocoa, Win32 and X11 adapters are present; only Cocoa compilation is
-verified. Native Wayland embedding is unsupported and reports an error. Qt owns
-the window/view; GPU resources and the SDL wrapper are released before QWidget.
-SDL's Cocoa Metal attachment requires the bounded patch described in THIRD_PARTY.md.
-Qt's responder chain is restored after SDL installs its notification observers;
-Qt dispatches events and the editor does not run a second SDL event pump.
+- Left: scene selector, searchable hierarchy with readable labels and stable IDs.
+- Right: label/localization key, parent, resource, local XYZ in metres, yaw in degrees,
+  uniform scale, shadow flag and reset of transform overrides to the template.
+- Bottom: searchable resource library with type, double-click or Add to Scene,
+  and validation problems. Assets already declared by the project can be placed;
+  this does not import new files or create resource definitions.
+- Object menu/toolbar: empty object, resource instance, duplicate subtree with new
+  IDs and remapped internal parents, delete subtree. Duplicate refuses known host
+  bindings (actions, state, item instances, legacy doors and visibility expressions).
+  Engine validation cannot discover arbitrary references from host scripts.
+- View menu: Frame Selected, refresh, panel toggles and Restore Panel Layout.
+  Layout/settings are local QSettings state. `PAPER_EDITOR_SETTINGS_DIR` isolates QA.
+- Q/W/E/R in the focused viewport select selection/move/yaw/scale tools. Left-click
+  picks a mesh; a selected object has a bounds outline. Drag colored world axes to
+  move, the screen ring horizontally to rotate around Y, or the diagonal handle to
+  scale uniformly. One drag is one undo command; Escape or lost focus cancels it.
+- Snap uses 0.5 metres, 15 degrees or 0.1 relative scale. Optional X-ray grid shows
+  the world ground plane. Overlays are drawn after the scene and do not depth-test.
+- RMB look + WASD/QE fly, Shift accelerates, MMB pans, Alt+LMB orbits selection,
+  wheel moves forward/back, F frames selection. Mouse capture releases on Escape,
+  lost focus and hiding. Delete/Backspace and Cmd/Ctrl+D are scoped to hierarchy
+  and viewport so typing in an inspector field does not delete/duplicate objects.
 
-`SceneDocument` stores raw authored values and the original TOML source. It does
-not serialize a flattened runtime `ScenePackage`. Each transform command captures
-node ID, property, before and after values. The project owns a bounded 128-command
-undo stack. Dirty is a comparison to the last saved authored snapshot, including
-undo across save. A new property is an explicit template override; removing a
-property during undo restores inheritance. Other scene fields remain untouched.
+## Architecture and boundaries
 
-`loadScenes` accepts in-memory document overrides and performs its usual resource,
-reference, bounds and hierarchy validation. Background rebuilds keep the previous
-valid preview; revisions prevent stale worker results from replacing newer edits.
-Only one rebuild runs at a time, with subsequent requests coalesced. The current
-implementation recompiles the package, rather than incrementally updating the
-renderer; initial project loading and save validation remain synchronous.
+Qt 6 Widgets owns windows, menus, docks, focus and the event loop. `Viewport` embeds
+SDL3 GPU rendering without per-frame CPU readback. Cocoa integration preserves the
+Qt root content view and responder chain, attaches Metal to the supplied child view,
+and reads that view's actual pixel bounds. The pinned SDL archive stays unchanged;
+checked build-tree substitutions are reapplied on configure. A native assertion
+rejects a wrapper that replaces Qt's view hierarchy. Qt owns process signals.
+Win32/X11 adapters are present but unverified; native Wayland is unsupported.
 
-The inspector exposes local XYZ in metres, Y rotation in degrees (stored in
-radians) and uniform scale using engine limits. It preserves unedited components
-at their original precision; six-decimal UI display alone never marks the file
-dirty. The hierarchy uses readable labels plus IDs and supports search. Right-drag
-looks around, the wheel moves along the view direction, F frames selection, and
-left-click selects a mesh. Escape, lost focus and hiding release mouse capture.
-Layout is local QSettings state; no workspace preference is written to assets.
+`Paper::Authoring` is independent of Qt/SDL. `SceneDocument` holds original TOML and
+raw authored values, not flattened runtime transforms. Commands capture authored
+node snapshots and selection, with a 128-command project history. Undo returns to
+the affected scene. Dirty compares against the latest saved snapshot. Template
+inheritance and explicit `remove` lists survive editing; technical IDs are stable.
+Reparent preserves world position/yaw/scale and uses runtime cycle/static-parent
+validation. Gizmo preview updates instance transforms in memory, including children;
+only release commits to the document. Invalid changes leave it unchanged.
 
-The standalone host uses neutral procedural materials; a game host supplies its
-own material factory and names through `Options`, called on background workers
-as well as during load/save, so it must be thread-safe and independent of SDL/UI.
-DCMO's host supplies its existing art library. Preview uses neutral illumination,
-no game session, scripts, playback, story visibility, game postprocessing or audio.
-It is an authoring view, not proof of exact in-game appearance.
+`loadScenes` validates candidate documents before commands are accepted and before
+saving. Initial load and command/save validation are synchronous and rebuild the
+whole package; large-project latency still needs profiling. Undo/refresh rebuilds
+run in one background worker with revision checks and coalescing. An already
+published revision is not republished over a later drag. The last valid preview
+remains visible during validation; gizmo editing waits for the matching package.
+
+The host supplies its thread-safe procedural material factory through `Options`;
+the standalone editor uses neutral materials. No game session, scripts, story
+visibility, audio or Play mode runs in Scene view. Yaw and uniform scale reflect
+the current runtime schema; full XYZ rotation/nonuniform scale are not offered.
 
 ## Save contract
 
-- No-op save does not touch the source file.
-- Existing transform values are replaced by source ranges; new overrides are
-  inserted after the node ID. Comments, IDs, templates and unrelated text remain.
-- The writer parses its result and requires semantic equality to the document.
-  Unsupported layouts fail before replacement. Inline node tables can replace
-  existing values but cannot insert/remove fields in this slice.
-- Unknown format versions are rejected; opening never migrates files.
-- Before save, all edited scenes are validated through the runtime loader. The
-  descriptor, scene, template, resource-manifest and localization source bytes are
-  compared against their opening/saved snapshots. External edits block saving.
-- `QLockFile` prevents cooperating editors opening the same project twice.
-  `QSaveFile` replaces one file atomically, with direct-write fallback disabled.
-  Read/write/commit errors keep dirty state and are shown in Problems/a dialog.
-- This is not filesystem compare-and-swap against arbitrary external writers:
-  a non-cooperating process can race the final comparison/rename. There is no
-  multi-file atomic transaction, autosave or crash recovery. Closing several
-  dirty scenes saves individually, explicitly described in the confirmation.
-- Reopen the same project to reload agreed external changes; its existing lock is
-  transferred only after the replacement project validates. Cancel preserves work.
+- No-op saves do not rewrite files. Changed fields use original source ranges;
+  structural edits retain existing node source blocks and format only new nodes.
+  Comments, templates, IDs and other scene sections survive. The writer reparses
+  output and requires exact semantic equality before producing replacement text.
+- Structural edits require explicit `[[scene.nodes]]` tables (or `nodes = []`).
+  Unsupported/ambiguous layouts fail without touching disk. Inline tables allow
+  existing-value replacement, but not field/structural insertion or deletion.
+- Unknown versions are rejected; opening does not migrate data. Current native
+  formats stay TOML/DCMO 2; glTF/GLB is the external model-format exception.
+- Descriptor, scenes, templates, manifests and localization source bytes are
+  checked against their opening/saved snapshots. External changes block writing.
+- QLockFile prevents cooperating editor instances. QSaveFile atomically replaces
+  one file with direct-write fallback disabled. Failure retains dirty state.
+  Save All is sequential, not a multi-file transaction. There is no autosave or
+  crash recovery yet. A non-cooperating writer can race the final compare/rename.
+- Source checking does not infer arbitrary game-script dependencies. Review host
+  references when deleting authored nodes used by gameplay.
 
-Source-preserving writer tests cover Unicode/comments, inheritance, no-op and
-undo across save, malformed transforms, unsupported layouts and compiling an
-unsaved parent transform without writing the source. They were compiled, not run.
+## Verified and remaining acceptance
 
-## Next acceptance steps
+Executed, with owner authorization and only on disposable copies:
 
-After the owner permits execution:
+- `paper_authoring_tests`: no-op byte identity, Unicode/comments, transform and
+  metadata edits, create/delete/reorder and undo across Save, nested source tables,
+  empty-scene transitions, invalid IDs, and unsaved transforms through the loader.
+- `paper_editor_workspace_tests <copied-project.paperproject>`: creates another
+  temporary copy itself, isolates settings, checks native GPU frames and nonoverlap
+  of visible docks, then edits/saves/reopens. Passed with Boxes and a host project.
+  The test is deliberately outside automatic CTest because it needs a native desktop.
+- macOS Release builds of editor/authoring targets. Detailed host verification is
+  recorded in the consuming project's development log.
 
-1. Run authoring/resource tests and open the independent Boxes example, then DCMO.
-2. Verify Metal/Retina drawing stays inside the viewport; resize docks/window,
-   move across displays, minimize/restore, use menus/text input and close repeatedly.
-3. Exercise pick → inspect → edit → undo/redo → save → reopen, including inherited
-   transforms, non-ASCII paths, external file edits, a second editor and read-only files.
-4. Repeat on Windows; measure package rebuild latency/memory on actual author tasks.
-5. Review Qt deployment/licensing before distributing an editor package.
+Native desktop screenshot automation timed out, so these programmatic checks are
+not a claim of human visual acceptance or comprehensive pointer/keyboard testing.
+Still required: direct manipulation review, Retina/multiple displays, dock dragging,
+minimize/restore, keyboard-only/IME, external-edit/write-failure injection, performance
+and user sessions; then Windows. The game and unrelated test binaries were not run.
 
-Next authoring work: selection outlines and spatial proxies, orbit/pan/fly and
-gizmos, create/delete/duplicate/reparent with reference checks, resource browser,
-async opening/import progress, document tabs, schema-driven diagnostics, autosave
-and recovery. The engine's inherited scene schema still needs generic host
-extension fields before treating it as a general-purpose engine API.
+Next work: autosave/recovery and Save All journal, import/reimport and thumbnails,
+component/light/room/spawn authoring, script-aware reference tools, multi-selection,
+local axes, copy/paste, scene creation, Play/Stop, incremental validation and packaging.
+Review Qt deployment/licensing before distributing a package.
 
-## Primary references used for this design
+## References
 
-- [Qt QSaveFile](https://doc.qt.io/qt-6/qsavefile.html): atomic replacement and direct-write fallback.
-- [Qt QLockFile](https://doc.qt.io/qt-6/qlockfile.html): cooperating process locks.
-- [Qt QUndoStack](https://doc.qt.io/qt-6/qundostack.html): command ownership and undo history.
-- [Qt QWidget](https://doc.qt.io/qt-6/qwidget.html): native widgets and embedding constraints.
-- [SDL_CreateWindowWithProperties](https://wiki.libsdl.org/SDL3/SDL_CreateWindowWithProperties): external Cocoa/Win32/X11 handles.
-- The pinned SDL 3.4.12 Cocoa/Metal implementation was inspected locally; its
-  external-view mismatch is a source finding, not a claim that Qt officially supports
-  this complete SDL GPU integration without platform testing.
+- [Qt QSaveFile](https://doc.qt.io/qt-6/qsavefile.html)
+- [Qt QLockFile](https://doc.qt.io/qt-6/qlockfile.html)
+- [Qt QUndoStack](https://doc.qt.io/qt-6/qundostack.html)
+- [Qt QWidget](https://doc.qt.io/qt-6/qwidget.html)
+- [SDL external windows](https://wiki.libsdl.org/SDL3/SDL_CreateWindowWithProperties)
+- SDL 3.4.12 Cocoa/Metal source inspected locally; the adapter patch is our source
+  integration, not a claim that Qt officially guarantees this SDL GPU combination.

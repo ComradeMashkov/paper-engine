@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.2.0-alpha.1+build.3] - 2026-09-23
+
+- Add a usable scene workspace: searchable resources, creation, subtree duplication
+  and deletion, names/resource/shadow inspector, world-preserving reparent, transform
+  reset, panel-layout reset and sequential Save All. Keep host bindings out of copies.
+- Add bounds selection, world move/yaw/uniform-scale handles, snap, optional X-ray
+  grid, fly/pan/orbit navigation and one undo command per committed drag.
+- Preserve authored TOML through structural edits, including nested tables, empty
+  scenes and undo after saving. Validate candidates before accepting edits.
+- Verification: authoring tests passed, including three copied host scene round trips;
+  native Qt/GPU workspace checks passed on temporary Boxes and host-project copies
+  through edit/save/reopen and resize. macOS editor/test targets compiled. Desktop
+  screenshot automation timed out; human visual acceptance remains open.
+- Limits: synchronous full-package command validation, yaw/uniform scale, existing
+  resources only; no recovery, scene creation, import UI, Play mode or packaging.
+  Windows/Linux and game execution were not tested. See docs/EDITOR.md.
+
+## [0.1.1-alpha.1+build.2] - 2026-09-23
+
+- Keep the host Qt content view intact when wrapping a Cocoa viewport with SDL;
+  apply the checked patch on every configure and assert native view ownership.
+  Build native macOS editor app bundles and let Qt own process signal handling.
+- Isolate QA settings through PAPER_EDITOR_SETTINGS_DIR, accept a copied fixture
+  root in authoring tests, and give the Boxes example a valid spawn room.
+- Verification: macOS editor compiled; authoring document tests passed on copied
+  Boxes assets. Native UI automation timed out; visual acceptance is still pending.
+  Game and other test executables were not run.
+
 ## [0.1.0-alpha.1+build.1] - 2026-09-23
 
 - Establish Paper Engine as an independent public repository with `paper` APIs and `Paper::…`
