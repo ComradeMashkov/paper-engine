@@ -34,7 +34,7 @@ id = 'table'
 kind = 'decoration'
 )";
 } // namespace
-int main() {
+int main(int argc, char** argv) {
     try {
         SceneDocument scene("room.dcscene", source);
         check(!scene.dirty() && scene.serialized() == source, "No-op must preserve every byte");
@@ -76,7 +76,7 @@ int main() {
         inlined.setProperty("chair", "scale", 2);
         rejects([&] { (void)inlined.serialized(); });
         check(inlined.original() == inlineSource, "Unsupported layout leaves original untouched");
-        const std::filesystem::path root = PAPER_EXAMPLE_ASSETS;
+        const std::filesystem::path root = argc > 1 ? argv[1] : PAPER_EXAMPLE_ASSETS;
         const auto original = paper::content::read(root / "boxes.dcscene");
         auto edited = original;
         edited["scene"]["nodes"][0]["position"] = ContentValue::array({5, 0, 0});

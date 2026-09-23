@@ -34,6 +34,8 @@ Viewport::~Viewport() {
 void Viewport::initialize() {
     if (gpu_ || unavailable_)
         return;
+    // Qt owns lifecycle and CLI signals, including stopping a development run.
+    SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
     session_ = std::make_unique<sdl::Session>(false);
     window_.reset(wrapNativeWindow(winId()));
     sdl::check(bool(window_), "Wrap Qt viewport");

@@ -618,6 +618,11 @@ int run(int argc, char** argv, Options options) {
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName("PaperEngine");
     QCoreApplication::setApplicationName("PaperEditor");
+    const auto settingsDirectory = qEnvironmentVariable("PAPER_EDITOR_SETTINGS_DIR");
+    if (!settingsDirectory.isEmpty()) {
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory);
+    }
     if (app.arguments().size() > 1)
         options.project = filePath(app.arguments().at(1));
     Window window(std::move(options));

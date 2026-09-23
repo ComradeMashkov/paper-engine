@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.1-alpha.1+build.2] - 2026-09-23
+
+- Keep the host Qt content view intact when wrapping a Cocoa viewport with SDL;
+  apply the checked patch on every configure and assert native view ownership.
+  Build native macOS editor app bundles and let Qt own process signal handling.
+- Isolate QA settings through PAPER_EDITOR_SETTINGS_DIR, accept a copied fixture
+  root in authoring tests, and give the Boxes example a valid spawn room.
+- Verification: macOS editor compiled; authoring document tests passed on copied
+  Boxes assets. Native UI automation timed out; visual acceptance is still pending.
+  Game and other test executables were not run.
+
 ## [0.1.0-alpha.1+build.1] - 2026-09-23
 
 - Establish Paper Engine as an independent public repository with `paper` APIs and `Paper::…`

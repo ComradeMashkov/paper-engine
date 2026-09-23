@@ -7,10 +7,11 @@ set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(SDL3 URL "${PROJECT_SOURCE_DIR}/vendor/SDL-3.4.12.tar.gz"
     URL_HASH SHA256=b68381f06a7580e63400b3b6eb547ec57d8c3ebde70f9f40e0aba530ba05da27
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    PATCH_COMMAND ${CMAKE_COMMAND} "-DSDL_SOURCE=<SOURCE_DIR>"
-        -P "${PROJECT_SOURCE_DIR}/cmake/PatchSDLCocoa.cmake")
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(SDL3)
+# Run on every configure, including existing build trees after a patch update.
+set(SDL_SOURCE "${sdl3_SOURCE_DIR}")
+include("${CMAKE_CURRENT_LIST_DIR}/PatchSDLCocoa.cmake")
 
 # Third-party implementation is compiled once, separately from project warnings.
 add_library(paper_stb STATIC "${PROJECT_SOURCE_DIR}/src/third_party/stb.cpp")
