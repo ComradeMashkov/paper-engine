@@ -1,0 +1,24 @@
+["tests/core/utf8_tests.cpp"]
+reason = "Independent Unicode scalar and byte-boundary expectations including malformed UTF-8; literal code points are protocol fixtures."
+literal_sha256 = "e6fc219240ca7187614fd9dc3b185516fd3fd0e9ccf9ec9f3e8c08e606888f5c"
+
+["tests/render/gpu_tests.cpp"]
+reason = "Independent tiny mesh/light/texture fixtures, readback pixel locations and GPU numeric tolerances. These are renderer validation inputs and expectations, not game content."
+literal_sha256 = "8f79d2803f6eb1b92daa29040e19760d00755ff9aed5e2fb7d98ce927f180ed8"
+
+["tests/render/render_data_tests.cpp"]
+reason = "Independent projection, near/far and uniform-layout expectations using synthetic camera/light fixtures; formulas and bounds are kept independent."
+literal_sha256 = "afb7fa40c78ed127635f7002749cf87e0f820b51ac341b65028fc5eb1d0cc3f4"
+
+["tests/resources/resource_tests.cpp"]
+reason = "Independent PNG/glTF byte and component fixtures, animation key times and resource-budget edge cases; frozen format inputs must remain independent."
+literal_sha256 = "6b3639c6cc5d24e54145f807d0bb25294c307429cba16e4ee52d99d3cf3d4b13"
+
+["tests/render/particle_tests.cpp"]
+reason = "Independent particle rates, metre positions, ages, opacities, deterministic seeds and malformed bounds verify analytical sampling and depth order independently of renderer defaults."
+literal_sha256 = "6dff0ed3f458f86ac22f55a788a2f08824d47ff3ca4b1c7d7ea0ffa926c4b062"
+
+
+["tests/authoring/document_tests.cpp"]
+reason = "Independent scene source fixtures: XYZ coordinates, scale and angle overrides, invalid vector lengths and Unicode source columns verify lossless editing and undo across save without using implementation defaults."
+literal_sha256 = "4a8ab1dc5dbe21df5db3cf05d1cef50c96b2a3b6b6083292fdae9685bb5b0644"

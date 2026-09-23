@@ -1,0 +1,12 @@
+format = "dcmo.resources"
+version = 2
+[resources]
+[[resources.resources]]
+id = "box"
+type = "procedural"
+[[resources.resources.primitives]]
+material = "neutral"
+[resources.resources.primitives.box]
+center = [0, 0, 0]
+half = [0.5, 0.5, 0.5]
+yaw = 0

@@ -1,0 +1,12 @@
+# VERSION is the only hand-edited source of application version numbers.
+set(PAPER_VERSION_FILE "${CMAKE_CURRENT_LIST_DIR}/../VERSION")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PAPER_VERSION_FILE}")
+file(READ "${PAPER_VERSION_FILE}" PAPER_VERSION)
+string(STRIP "${PAPER_VERSION}" PAPER_VERSION)
+if(NOT PAPER_VERSION MATCHES "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\\.([1-9][0-9]*))?\\+build\\.([1-9][0-9]*)$")
+    message(FATAL_ERROR "VERSION must be MAJOR.MINOR.PATCH[-alpha.N|-beta.N|-rc.N]+build.B")
+endif()
+set(PAPER_VERSION_CORE "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
+set(PAPER_VERSION_CHANNEL "${CMAKE_MATCH_5}")
+set(PAPER_VERSION_ITERATION "${CMAKE_MATCH_6}")
+set(PAPER_BUILD_NUMBER "${CMAKE_MATCH_7}")

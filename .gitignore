@@ -1,0 +1,67 @@
+# Historical versions and rejected assets, retained locally only.
+/archive/
+
+# Build trees, distribution packages and generated previews.
+/build/
+/build-*/
+/cmake-build-*/
+/dist/
+/output/
+/out/
+/tmp/
+/temp/
+/.cache/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.app/
+*.dSYM/
+*.pdb
+
+# Local game state, logs and machine-specific settings.
+*.sav
+*.sav.*
+settings.cfg
+settings.cfg.*
+*.log
+*.tmp
+*.bak
+CMakeUserPresets.json
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Editor, assistant and OS workspace state.
+/.idea/
+/.vscode/
+/.codex/
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+*.user
+*.suo
+*.swp
+*.swo
+*~
+__pycache__/
+*.py[cod]
+.venv/
+
+# Keep assets/ and vendor/ tracked, including the pinned SDL source archive.
+
+# Project locks are local editor state.
+*.editor.lock

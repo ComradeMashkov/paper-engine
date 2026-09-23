@@ -1,0 +1,5 @@
+format = "paper.project"
+version = 1
+name = "Paper — Boxes"
+assets = "assets"
+world = "world.dcworld"

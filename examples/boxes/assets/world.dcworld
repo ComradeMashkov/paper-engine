@@ -1,0 +1,7 @@
+format = "dcmo.world"
+version = 2
+[world]
+entrySpawn = "start"
+resources = ["boxes.dcresources"]
+templates = []
+scenes = ["boxes.dcscene"]

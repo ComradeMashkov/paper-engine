@@ -1,0 +1,22 @@
+format = "dcmo.scene"
+version = 2
+[scene]
+id = "boxes"
+rooms = []
+lights = []
+# Both boxes use the same immutable mesh; the child has a local transform.
+[[scene.nodes]]
+id = "box.parent"
+label = "Parent box"
+resource = "box"
+position = [0, 0, 0]
+[[scene.nodes]]
+id = "box.child"
+label = "Child box"
+parent = "box.parent"
+resource = "box"
+position = [2, 0, 0]
+[[scene.spawns]]
+id = "start"
+position = [0, 1, -5]
+yaw = 0

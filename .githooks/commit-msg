@@ -1,0 +1,26 @@
+#!/bin/sh
+set -eu
+
+message=$1
+maximum_title_characters=72
+title=$(sed -n '1p' "$message")
+if ! printf '%s\n' "$title" | grep -Eq '^(feat|fix|docs|chore|refactor|perf|test|build|ci|style|revert)(\([a-z0-9][a-z0-9._/-]*\))?!?: [^[:space:]].*$'; then
+    printf '%s\n' 'Use Conventional Commits: type(scope): short description. See CONTRIBUTING.md.' >&2
+    exit 1
+fi
+if [ "${#title}" -gt "$maximum_title_characters" ]; then
+    printf '%s\n' 'Keep the commit title within 72 characters.' >&2
+    exit 1
+fi
+if grep -Eiq '^[[:space:]]*Co-authored-by:.*(codex|chatgpt|openai|assistant|claude|copilot)' "$message"; then
+    printf '%s\n' 'AI assistant co-author trailers are not allowed.' >&2
+    exit 1
+fi
+
+# Inspect staged metadata so unstaged edits cannot satisfy the version policy.
+project_dir=$(git rev-parse --show-toplevel)
+if printf '%s\n' "$title" | grep -Eq '^feat(\([a-z0-9][a-z0-9._/-]*\))?!?: '; then
+    python3 "$project_dir/tools/check_version.py" --staged --feature
+else
+    python3 "$project_dir/tools/check_version.py" --staged
+fi
