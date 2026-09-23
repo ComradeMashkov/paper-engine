@@ -24,11 +24,12 @@ Archive/header hashes:
 - nlohmann/json: aaf127c04cb31c406e5b04a63f1ae89369fccde6d8fa7cdda1ed4f32dfc5de63
 
 `cmake/PatchSDLCocoa.cmake` deliberately modifies only the extracted SDL build-tree
-copy: Metal attaches to `sdlContentView` using its local bounds; pixel size is read
+copy: external Cocoa windows retain the host root content view; Metal attaches to `sdlContentView` using its local bounds; pixel size is read
 from that view's current bounds so Qt dock resizing is handled. The pinned archive
 is unchanged. Exact source matching fails configure if the upstream implementation
 changes. For ordinary game windows this is the same content view. The adapter's
-native event/responder lifecycle still requires runtime acceptance.
+native ownership, rendering, dock bounds and window resize passed isolated macOS
+editor integration checks; broader focus/DPI/platform acceptance remains open.
 
 Qt deployment, notices and license choice are a distribution gate; no editor
 package is produced here. Reference: https://doc.qt.io/qt-6/licensing.html.

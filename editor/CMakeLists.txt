@@ -15,6 +15,15 @@ paper_target(paper_editor)
 target_link_libraries(paper_editor PRIVATE Paper::Editor)
 target_compile_definitions(paper_editor PRIVATE PAPER_EDITOR_SHADER_DIR="${PAPER_SHADER_OUTPUT_DIR}")
 add_dependencies(paper_editor paper_shaders)
+if(PAPER_BUILD_TESTS)
+    add_executable(paper_editor_workspace_tests ../tests/editor/workspace_tests.cpp)
+    paper_target(paper_editor_workspace_tests)
+    target_link_libraries(paper_editor_workspace_tests PRIVATE Paper::Editor)
+    target_compile_definitions(paper_editor_workspace_tests PRIVATE PAPER_TEST_SHADER_DIR="${PAPER_SHADER_OUTPUT_DIR}")
+    add_dependencies(paper_editor_workspace_tests paper_shaders)
+    # Requires a caller-owned copy of the Boxes project and a native desktop/GPU;
+    # deliberately excluded from automatic CTest runs.
+endif()
 
 if(APPLE)
     set_target_properties(paper_editor PROPERTIES MACOSX_BUNDLE_GUI_IDENTIFIER "studio.paper.editor" MACOSX_BUNDLE_BUNDLE_NAME "Paper Editor")

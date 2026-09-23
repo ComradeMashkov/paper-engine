@@ -21,4 +21,8 @@ literal_sha256 = "6dff0ed3f458f86ac22f55a788a2f08824d47ff3ca4b1c7d7ea0ffa926c4b0
 
 ["tests/authoring/document_tests.cpp"]
 reason = "Independent scene source fixtures: XYZ coordinates, scale and angle overrides, invalid vector lengths and Unicode source columns verify lossless editing and undo across save without using implementation defaults."
-literal_sha256 = "b40ed85e780202f868fc40e15c756245ed60cc454534e0d47680d394088becdf"
+literal_sha256 = "bf442854e31d760b0fc7669a4efef2a02607a572c77f3ed5549fddb3badeddd6"
+
+["tests/editor/workspace_tests.cpp"]
+reason = "Independent native editor workflow expectations: object count deltas, chosen metre coordinate, window dimensions, float tolerance and bounded event-loop deadlines verify persistence and viewport integration on disposable project copies."
+literal_sha256 = "c34a49a56e99c8e2e4acc48e6d8d9bdf9fcef9dda7a5fdc8b3433d1063227563"

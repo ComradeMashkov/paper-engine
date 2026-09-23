@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0-alpha.1+build.3] - 2026-09-23
+
+- Add a usable scene workspace: searchable resources, creation, subtree duplication
+  and deletion, names/resource/shadow inspector, world-preserving reparent, transform
+  reset, panel-layout reset and sequential Save All. Keep host bindings out of copies.
+- Add bounds selection, world move/yaw/uniform-scale handles, snap, optional X-ray
+  grid, fly/pan/orbit navigation and one undo command per committed drag.
+- Preserve authored TOML through structural edits, including nested tables, empty
+  scenes and undo after saving. Validate candidates before accepting edits.
+- Verification: authoring tests passed, including three copied host scene round trips;
+  native Qt/GPU workspace checks passed on temporary Boxes and host-project copies
+  through edit/save/reopen and resize. macOS editor/test targets compiled. Desktop
+  screenshot automation timed out; human visual acceptance remains open.
+- Limits: synchronous full-package command validation, yaw/uniform scale, existing
+  resources only; no recovery, scene creation, import UI, Play mode or packaging.
+  Windows/Linux and game execution were not tested. See docs/EDITOR.md.
+
 ## [0.1.1-alpha.1+build.2] - 2026-09-23
 
 - Keep the host Qt content view intact when wrapping a Cocoa viewport with SDL;

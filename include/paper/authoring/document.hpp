@@ -15,8 +15,10 @@ class SceneDocument {
     const ContentValue& node(std::string_view id) const;
     ContentValue property(std::string_view id, std::string_view name) const;
     void setProperty(std::string_view id, std::string_view name, const ContentValue& value);
+    // Structural commands keep a complete authored-node snapshot for undo across Save.
+    void replaceNodes(ContentValue nodes);
     bool dirty() const { return data_ != saved_; }
-    // Patches only position/yaw/scale source ranges; verifies semantic equality.
+    // Patches editable fields and array-of-table nodes; verifies semantic equality.
     // Unsupported source layouts fail without producing a replacement file.
     std::string serialized() const;
     void acceptSaved(std::string source);

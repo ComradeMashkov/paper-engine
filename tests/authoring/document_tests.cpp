@@ -1,6 +1,7 @@
 #include "paper/authoring/document.hpp"
 #include "paper/content/document.hpp"
 #include "paper/scenes/scene.hpp"
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 using paper::ContentValue;
@@ -76,6 +77,41 @@ int main(int argc, char** argv) {
         inlined.setProperty("chair", "scale", 2);
         rejects([&] { (void)inlined.serialized(); });
         check(inlined.original() == inlineSource, "Unsupported layout leaves original untouched");
+        SceneDocument structure("structure.dcscene",
+                                source + "[scene.nodes.bounds]\ncenter=[0,0,0]\nhalf=[1,1,1]\n"
+                                         "[[scene.rooms]]\nid='workshop'\nlabel='Workshop'\n");
+        const auto originalNodes = structure.nodes();
+        auto nodes = originalNodes;
+        nodes.elements().push_back(ContentValue{
+            {"id", "new.box"}, {"resource", "box"}, {"position", ContentValue::array({0, 0, 4})}});
+        structure.replaceNodes(nodes);
+        structure.setProperty("chair", "label", "Новое имя");
+        auto structuralOutput = structure.serialized();
+        check(paper::content::parse(structuralOutput, "created") == structure.data(),
+              "Create and rename preserve nested tables and other scene sections");
+        check(structuralOutput.find("# ID должен сохраниться") != std::string::npos &&
+                  structuralOutput.find("# Авторский комментарий") != std::string::npos,
+              "Structural edits preserve existing source comments");
+        structure.acceptSaved(structuralOutput);
+        structure.replaceNodes(originalNodes);
+        structure.acceptSaved(structure.serialized());
+        auto removed = originalNodes;
+        removed.erase(0);
+        structure.replaceNodes(removed);
+        structure.acceptSaved(structure.serialized());
+        structure.replaceNodes(originalNodes);
+        check(paper::content::parse(structure.serialized(), "undo-delete") == structure.data(),
+              "Undo deletion across save restores node order and nested values");
+        structure.replaceNodes(ContentValue::array());
+        structure.acceptSaved(structure.serialized());
+        structure.replaceNodes(originalNodes);
+        check(paper::content::parse(structure.serialized(), "from-empty") == structure.data(),
+              "Create nodes in empty scene after save");
+        const auto validNodes = structure.nodes();
+        auto duplicate = validNodes;
+        duplicate.elements().push_back(validNodes.at(0));
+        rejects([&] { structure.replaceNodes(duplicate); });
+        check(structure.nodes() == validNodes, "Invalid node replacement is atomic");
         const std::filesystem::path root = argc > 1 ? argv[1] : PAPER_EXAMPLE_ASSETS;
         const auto original = paper::content::read(root / "boxes.dcscene");
         auto edited = original;
@@ -91,6 +127,29 @@ int main(int argc, char** argv) {
               "Unsaved local transforms compile into world transforms");
         check(paper::content::read(root / "boxes.dcscene") == original,
               "Preview does not write authored files");
+        if (argc > 2) {
+            size_t checked = 0;
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(argv[2])) {
+                if (entry.path().extension() != ".dcscene")
+                    continue;
+                std::ifstream input(entry.path(), std::ios::binary);
+                const std::string text{std::istreambuf_iterator<char>(input), {}};
+                SceneDocument gameScene(entry.path(), text);
+                const auto baseline = gameScene.nodes();
+                auto added = baseline;
+                added.elements().push_back(
+                    ContentValue{{"id", "editor.qa.created"}, {"label", "QA"}});
+                gameScene.replaceNodes(added);
+                gameScene.acceptSaved(gameScene.serialized());
+                gameScene.replaceNodes(baseline);
+                check(paper::content::parse(gameScene.serialized(), "undo-host") ==
+                          paper::content::parse(text, "original-host"),
+                      "Host scene structural undo must preserve all authored fields");
+                ++checked;
+            }
+            check(checked > 0, "Expected copied host scenes");
+            std::cout << "Copied host scene round trips passed: " << checked << '\n';
+        }
         std::cout << "Authoring document invariants passed\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
