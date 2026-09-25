@@ -28,6 +28,8 @@ struct EngineConfig {
     bool headless = false;
     bool muted = false;
     bool profile = false;
+    // Explicit content snapshots must never fall back to bundled/source assets.
+    bool exactAssetRoot = false;
 };
 struct FrameTimings {
     RenderStats world;

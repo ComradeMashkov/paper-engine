@@ -1,3 +1,4 @@
+#include "../../editor/play_controller.hpp"
 #include "../../editor/viewport.hpp"
 #include "../../editor/workspace.hpp"
 #include "paper/content/document.hpp"
@@ -7,8 +8,10 @@
 #include <QDockWidget>
 #include <QDoubleSpinBox>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -43,6 +46,8 @@ int main(int argc, char** argv) {
         const auto supplied = std::filesystem::canonical(argv[1]);
         std::filesystem::copy(supplied.parent_path(), destination,
                               std::filesystem::copy_options::recursive);
+        // A copied lock refers to the source editor, not to this new disposable project.
+        std::filesystem::remove(destination / (supplied.filename().string() + ".editor.lock"));
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, temporary.path());
         QCoreApplication::setOrganizationName("PaperEditorTests");
@@ -50,6 +55,7 @@ int main(int argc, char** argv) {
         paper::editor::Options options;
         options.project = destination / supplied.filename();
         options.shaders = PAPER_TEST_SHADER_DIR;
+        options.playExecutable = PAPER_PLAY_FIXTURE;
         const auto projectSpec = paper::content::read(options.project);
         const auto assetsRoot = destination / projectSpec.at("assets").get<std::string>();
         std::filesystem::create_directories(assetsRoot / "browser-fixture" / "empty");
@@ -182,11 +188,52 @@ int main(int argc, char** argv) {
         check(std::abs(node(persisted, resourceId).at("position").at(0).get<double>() - oldX - 1) <
                   1e-5,
               "Viewport transform must persist");
+        auto* play =
+            dynamic_cast<paper::editor::PlayController*>(child<QObject>(*window, "playController"));
+        check(play, "Missing Play controller");
+        auto* spawn = child<QComboBox>(*window, "playSpawn");
+        check(spawn->count() > 0, "Expected a start point for Play");
+        spawn->setCurrentIndex(spawn->count() - 1);
+        // Dirty edits must reach Play without saving the original scene.
+        action("createGroup");
+        const auto unsavedId = tree->currentItem()->data(0, Qt::UserRole).toString().toStdString();
+        const auto diskBeforePlay = paper::content::read(scenePath);
+        action("play");
+        check(!child<QAction>(*window, "play")->isEnabled(), "Play must disable duplicate launch");
+        waitFor([&] {
+            return !play->sessionDirectory().isEmpty() &&
+                   std::filesystem::exists(
+                       std::filesystem::path(play->sessionDirectory().toStdU16String()) / "state" /
+                       "ready");
+        });
+        const auto snapshot = std::filesystem::path(play->sessionDirectory().toStdU16String());
+        const auto relativeScene = scenePath.lexically_relative(assetsRoot);
+        check(node(paper::content::read(snapshot / "assets" / relativeScene), unsavedId).at("id") ==
+                  unsavedId,
+              "Play button must include unsaved scene edits");
+        check(paper::content::read(snapshot / "assets" / projectSpec.at("world").get<std::string>())
+                      .at("world")
+                      .at("entrySpawn") == spawn->currentData().toString().toStdString(),
+              "Play must use the selected scene start point");
+        check(paper::content::read(scenePath) == diskBeforePlay &&
+                  child<QAction>(*window, "saveScene")->isEnabled(),
+              "Play must leave source and dirty state unchanged");
+        action("stop");
+        waitFor([&] { return !play->active(); });
+        check(!std::filesystem::exists(snapshot) && child<QAction>(*window, "play")->isEnabled(),
+              "Stop must clean up and restore Play availability");
+        action("undo");
+        waitFor([&] { return problems->count() == 0; });
+        check(count() == originalCount + 3, "Play must preserve authoring Undo history");
         const auto beforeResize = viewport->renderedFrames();
         window->resize(1100, 760);
         waitFor([&] { return viewport->renderedFrames() > beforeResize; });
         check(problems->count() == 0, "Native resize must keep rendering");
+        // Closing a running session requests Stop and waits for its child to exit.
+        action("play");
+        waitFor([&] { return play->state() == paper::editor::PlayController::State::Running; });
         window->close();
+        waitFor([&] { return !window->isVisible() && !play->active(); });
         window.reset();
         // Reopen the saved project, not an in-memory document from the previous window.
         auto reopened = paper::editor::makeWorkspace(options);
@@ -198,7 +245,8 @@ int main(int argc, char** argv) {
         std::cout
             << "Editor workspace checks passed: native rendering/docks/resize, create, inspector, "
                "duplicate, delete, undo/redo across save, reparent, resource "
-               "folders/categories/search/detach/placement, transform, reopen\n";
+               "folders/categories/search/detach/placement, transform, isolated Play/Stop/close, "
+               "reopen\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

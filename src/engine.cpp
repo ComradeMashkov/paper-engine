@@ -12,6 +12,12 @@ namespace {
 constexpr int initialWidth = 1280, initialHeight = 800;
 constexpr int minimumWidth = 960, minimumHeight = 600;
 std::filesystem::path locateAssets(const EngineConfig& config) {
+    if (config.exactAssetRoot) {
+        if (!config.assetRoot.is_absolute() ||
+            !std::filesystem::is_regular_file(config.assetRoot / config.fontFile))
+            throw std::runtime_error("Invalid explicit asset root: " + config.assetRoot.string());
+        return std::filesystem::canonical(config.assetRoot);
+    }
     const char* basePath = SDL_GetBasePath();
     const auto base = basePath ? std::filesystem::path(basePath) : std::filesystem::path{};
     for (const auto& candidate :

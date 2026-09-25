@@ -1,6 +1,7 @@
 #include "paper/editor/application.hpp"
 #include "paper/authoring/document.hpp"
 #include "paper/content/document.hpp"
+#include "play_controller.hpp"
 #include "resource_browser.hpp"
 #include "viewport.hpp"
 #include "workspace.hpp"
@@ -23,6 +24,7 @@
 #include <QMainWindow>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSaveFile>
 #include <QScrollArea>
@@ -30,6 +32,7 @@
 #include <QSignalBlocker>
 #include <QStatusBar>
 #include <QStyle>
+#include <QTimer>
 #include <QToolBar>
 #include <QTreeWidget>
 #include <QUndoStack>
@@ -46,7 +49,7 @@ constexpr int initialWidth = 1400, initialHeight = 900, transformDecimals = 6;
 constexpr int historyLimit = 128;
 constexpr int hierarchyMinimumWidth = 240, inspectorMinimumWidth = 280;
 constexpr int hierarchyInitialWidth = 280, inspectorInitialWidth = 310;
-constexpr int resourcesInitialHeight = 200, problemsInitialHeight = 120;
+constexpr int resourcesInitialHeight = 280, problemsInitialHeight = 120;
 QString text(std::string_view value) {
     return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
 }
@@ -329,11 +332,25 @@ class Window final : public QMainWindow {
         problems_ = new QListWidget;
         problems_->setObjectName("projectProblems");
         dock(tr("Problems"), "problems", problems_, Qt::BottomDockWidgetArea);
+        console_ = new QPlainTextEdit;
+        console_->setObjectName("playConsole");
+        console_->setReadOnly(true);
+        constexpr int consoleLineLimit = 1000;
+        console_->setMaximumBlockCount(consoleLineLimit);
+        dock(tr("Console"), "console", console_, Qt::BottomDockWidgetArea);
+        play_ = new PlayController(this);
+        play_->setObjectName("playController");
+        play_->output = [this](const QString& value) { console_->appendPlainText(value); };
+        play_->changed = [this](PlayController::State) {
+            updatePlay();
+            if (!play_->active() && closeAfterStop_)
+                QTimer::singleShot(0, this, &QWidget::close);
+        };
         auto* file = menuBar()->addMenu(tr("File"));
-        auto* open = file->addAction(tr("Open Project…"));
+        auto* open = open_ = file->addAction(tr("Open Project…"));
         open->setShortcut(QKeySequence::Open);
         connect(open, &QAction::triggered, this, [this] {
-            if (confirmChanges())
+            if (!play_->active() && confirmChanges())
                 chooseProject();
         });
         save_ = file->addAction(tr("Save Scene"));
@@ -419,6 +436,32 @@ class Window final : public QMainWindow {
         open->setIcon(style()->standardIcon(QStyle::SP_DirOpenIcon));
         save_->setIcon(style()->standardIcon(QStyle::SP_DialogSaveButton));
         remove_->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
+        auto* playMenu = menuBar()->addMenu(tr("Play"));
+        playAction_ = playMenu->addAction(style()->standardIcon(QStyle::SP_MediaPlay), tr("Play"));
+        playAction_->setObjectName("play");
+        playAction_->setShortcut(Qt::Key_F5);
+        playAction_->setToolTip(tr(
+            "Play unsaved scenes in a separate game window (F5). Changes apply on the next Play."));
+        stopAction_ = playMenu->addAction(style()->standardIcon(QStyle::SP_MediaStop), tr("Stop"));
+        stopAction_->setObjectName("stop");
+        stopAction_->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F5));
+        connect(playAction_, &QAction::triggered, this, [this] { startPlay(); });
+        connect(stopAction_, &QAction::triggered, this, [this] { play_->stop(); });
+        auto* playback = addToolBar(tr("Play Controls"));
+        playback->setObjectName("playToolbar");
+        playback->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        playback->addAction(playAction_);
+        playback->addAction(stopAction_);
+        playback->addWidget(new QLabel(tr("  Start at: ")));
+        spawn_ = new QComboBox;
+        spawn_->setObjectName("playSpawn");
+        spawn_->setAccessibleName(tr("Play start point"));
+        spawn_->setToolTip(tr("Start point in the selected scene"));
+        playback->addWidget(spawn_);
+        playStatus_ = new QLabel;
+        playStatus_->setObjectName("playStatus");
+        statusBar()->addPermanentWidget(playStatus_);
+        connect(spawn_, &QComboBox::currentIndexChanged, this, [this] { updatePlay(); });
         addToolBarBreak();
         auto* tools = addToolBar(tr("Scene Tools"));
         tools->setObjectName("sceneTools");
@@ -484,6 +527,8 @@ class Window final : public QMainWindow {
                     {resourcesInitialHeight, problemsInitialHeight}, Qt::Vertical);
         splitDockWidget(findChild<QDockWidget*>("assets"), findChild<QDockWidget*>("problems"),
                         Qt::Horizontal);
+        tabifyDockWidget(findChild<QDockWidget*>("problems"), findChild<QDockWidget*>("console"));
+        findChild<QDockWidget*>("problems")->raise();
         defaultLayout_ = saveState();
         QSettings settings;
         restoreGeometry(settings.value("window/geometry").toByteArray());
@@ -494,9 +539,21 @@ class Window final : public QMainWindow {
             openProject(options_.project);
     }
 
+    ~Window() override {
+        play_->changed = {};
+        play_->output = {};
+    }
+
   protected:
     void closeEvent(QCloseEvent* event) override {
-        if (!confirmChanges()) {
+        if (!closeAfterStop_ && !confirmChanges()) {
+            event->ignore();
+            return;
+        }
+        if (play_->active()) {
+            closeAfterStop_ = true;
+            play_->stop();
+            setEnabled(false);
             event->ignore();
             return;
         }
@@ -569,6 +626,7 @@ class Window final : public QMainWindow {
         if (package_)
             viewport_->scene(package_, current_->data().at("scene").at("id").get<std::string>(),
                              true);
+        populateSpawns();
         updateState();
     }
     void rebuildTree() {
@@ -971,6 +1029,7 @@ class Window final : public QMainWindow {
         if (current_)
             viewport_->scene(package_, current_->data().at("scene").at("id").get<std::string>(),
                              false);
+        populateSpawns();
         updateState();
     }
     bool save(const std::shared_ptr<authoring::SceneDocument>& document) {
@@ -1032,7 +1091,83 @@ class Window final : public QMainWindow {
                     return false;
         return true;
     }
+    void populateSpawns() {
+        const auto previous = spawn_->currentData();
+        QSignalBlocker blocker(spawn_);
+        spawn_->clear();
+        if (package_ && current_) {
+            const auto scene = current_->data().at("scene").at("id").get<std::string>();
+            for (const auto& spawn : package_->spawns)
+                if (spawn.scene == scene)
+                    spawn_->addItem(text(spawn.id), text(spawn.id));
+            auto index = spawn_->findData(previous);
+            if (index < 0)
+                index = spawn_->findData(text(package_->entrySpawn));
+            if (index >= 0)
+                spawn_->setCurrentIndex(index);
+        }
+        updatePlay();
+    }
+    void updatePlay() {
+        if (!playAction_)
+            return;
+        const bool active = play_->active();
+        playAction_->setEnabled(project_ && !active && !options_.playExecutable.empty() &&
+                                spawn_->count());
+        stopAction_->setEnabled(active && play_->state() != PlayController::State::Stopping);
+        spawn_->setEnabled(!active);
+        open_->setEnabled(!active);
+        switch (play_->state()) {
+        case PlayController::State::Idle:
+            playStatus_->setText(options_.playExecutable.empty() ? tr("No host runtime configured")
+                                 : spawn_->count() ? tr("Edit Mode")
+                                                   : tr("No start point in this scene"));
+            break;
+        case PlayController::State::Preparing:
+            playStatus_->setText(tr("Preparing Play…"));
+            break;
+        case PlayController::State::Starting:
+            playStatus_->setText(tr("Starting Play…"));
+            break;
+        case PlayController::State::Running:
+            playStatus_->setText(tr("PLAY • Changes apply on next run"));
+            break;
+        case PlayController::State::Stopping:
+            playStatus_->setText(tr("Stopping Play…"));
+            break;
+        }
+    }
+    void startPlay() {
+        if (!project_ || play_->active() || spawn_->currentIndex() < 0 ||
+            options_.playExecutable.empty())
+            return;
+        auto* panel = findChild<QDockWidget*>("console");
+        panel->show();
+        panel->raise();
+        try {
+            project_->verifySources();
+            PlayInput input;
+            input.root = project_->root;
+            input.manifest = project_->manifest;
+            for (const auto& [path, source] : project_->sources)
+                if (path != project_->file)
+                    input.expected.emplace(path.lexically_relative(project_->root), source);
+            for (const auto& [path, document] : project_->scenes) {
+                input.expected[path] = document->original();
+                input.overrides[path] = document->serialized();
+            }
+            ResourceStore files(project_->root);
+            auto world = content::parse(project_->sources.at(files.resolve(project_->manifest)),
+                                        project_->manifest.string());
+            world["world"]["entrySpawn"] = spawn_->currentData().toString().toStdString();
+            input.overrides[project_->manifest] = content::encode(world);
+            play_->start(std::move(input), options_.playExecutable, options_.playArguments);
+        } catch (const std::exception& error) {
+            console_->appendPlainText(tr("Cannot Play: ") + text(error.what()));
+        }
+    }
     void updateState() {
+        updatePlay();
         const bool dirty = project_ && std::ranges::any_of(project_->scenes, [](const auto& item) {
                                return item.second->dirty();
                            });
@@ -1046,6 +1181,12 @@ class Window final : public QMainWindow {
         else
             statusBar()->showMessage(tr("Open a .paperproject file"));
     }
+    PlayController* play_ = nullptr;
+    QPlainTextEdit* console_ = nullptr;
+    QComboBox* spawn_ = nullptr;
+    QLabel* playStatus_ = nullptr;
+    QAction *playAction_ = nullptr, *stopAction_ = nullptr, *open_ = nullptr;
+    bool closeAfterStop_ = false;
     QByteArray defaultLayout_;
     QList<QAction*> toolActions_;
     QLineEdit* name_ = nullptr;

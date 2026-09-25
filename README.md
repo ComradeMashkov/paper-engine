@@ -8,8 +8,11 @@ Public headers live in `include/paper/`, C++ APIs use `paper`, CMake consumers l
 The editor provides hierarchy, inspector, resource placement, create/delete/duplicate,
 reparent, world transform gizmos, camera controls, undo/redo and guarded TOML saving.
 Native Qt/GPU integration and editing/saving/reopening were tested on temporary
-macOS project copies. Human acceptance, recovery, import UI and Play mode are still
-outstanding. No game logic runs while editing. See [the editor contract](docs/EDITOR.md).
+macOS project copies. The Project browser has folders, category/search filters and
+a floating window.
+Host-configured Play/Stop uses isolated snapshots and temporary saves. Its process
+lifecycle is tested with a fixture; real-game Play acceptance, human usability,
+recovery and import UI are still outstanding. No game logic runs in Scene view. See [the editor contract](docs/EDITOR.md).
 
 ## Build
 
