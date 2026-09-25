@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.4.0-alpha.1+build.5] - 2026-09-25
+
+- Add host-configured Play/Stop, scene start-point selection and a bounded Console.
+  Prepare unsaved scenes and media in an isolated temporary snapshot on a worker;
+  launch the trusted host executable with structured arguments and no shell.
+- Add preparation cancellation, launch/exit diagnostics, cooperative Stop with
+  terminate/kill deadlines, repeat protection and asynchronous close/cleanup.
+  Keep authoring edits/Undo separate from runtime state and temporary persistence.
+- Add opt-in exactAssetRoot to runtime configuration, preventing Play snapshots
+  from silently falling back to installed/source content. Existing hosts retain
+  asset discovery; standalone editor Play is disabled without a configured host.
+- Verification: macOS host editor/runtime and standalone editor targets compiled;
+  isolated Qt/GPU workspace tests passed with Boxes and host project copies, including
+  unsaved Play, selected spawn, Stop and close with a test-only child process.
+  Play lifecycle tests passed for repeat, cancellation, failures, external changes,
+  symlinks, media isolation and forced termination. Metadata/static checks passed.
+- Limits: the real game was not launched by owner instruction. Human visual acceptance
+  and other platforms remain unverified; no Pause, live reload or embedded Game view.
+  Snapshots reject symlinks and cap copied content at 4 GiB / 100,000 files.
+
+## [0.3.0-alpha.1+build.4] - 2026-09-25
+
+- Add a Project browser with actual folders, grouped resource/file categories,
+  combined search and type filters, folder reveal, scene navigation and an explicit
+  floating-window toggle. Distinguish placeable definitions from source files.
+- Default the entire editor interface to English; preserve authored project text.
+- Verification: macOS editor and workspace targets built; isolated native Qt/GPU
+  workspace tests passed with Boxes and the host project, including folder/category/
+  search filters, detach/reattach, resource placement, save/reopen and resize.
+  Version and numeric ownership checks passed.
+- Limits: no import/reimport, thumbnails or file operations beyond folder reveal.
+  The asynchronous index ignores symlinks and reports a 100,000-entry cap.
+  Human visual acceptance and Windows/Linux remain unverified.
+
 ## [0.2.0-alpha.1+build.3] - 2026-09-23
 
 - Add a usable scene workspace: searchable resources, creation, subtree duplication

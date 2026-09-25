@@ -40,8 +40,8 @@ Viewport::Viewport(std::filesystem::path shaders, QWidget* parent)
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
     elapsed_.start();
-    setAccessibleName(tr("Трёхмерный вид сцены"));
-    setToolTip(tr("Правая кнопка — осмотр; колесо — движение; F — приблизить выбранный объект"));
+    setAccessibleName(tr("3D Scene View"));
+    setToolTip(tr("Right mouse: Look; Wheel: Move; F: Frame Selected"));
     connect(&timer_, &QTimer::timeout, this, [this] { draw(); });
 }
 Viewport::~Viewport() {
