@@ -9,6 +9,7 @@
 #include <QElapsedTimer>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTreeWidget>
@@ -49,6 +50,9 @@ int main(int argc, char** argv) {
         paper::editor::Options options;
         options.project = destination / supplied.filename();
         options.shaders = PAPER_TEST_SHADER_DIR;
+        const auto projectSpec = paper::content::read(options.project);
+        const auto assetsRoot = destination / projectSpec.at("assets").get<std::string>();
+        std::filesystem::create_directories(assetsRoot / "browser-fixture" / "empty");
         auto window = paper::editor::makeWorkspace(options);
         window->show();
         auto* tree = child<QTreeWidget>(*window, "sceneHierarchy");
@@ -65,8 +69,6 @@ int main(int argc, char** argv) {
             check(!panel->geometry().intersects(viewport->geometry()),
                   "Viewport overlaps a dock panel");
         }
-        const auto projectSpec = paper::content::read(options.project);
-        const auto assetsRoot = destination / projectSpec.at("assets").get<std::string>();
         const auto scenePath =
             assetsRoot /
             child<QComboBox>(*window, "sceneList")->currentData().toString().toStdString();
@@ -133,7 +135,43 @@ int main(int argc, char** argv) {
               "Detach must remove parent, not write an invalid empty ID");
         auto* resources = child<QTreeWidget>(*window, "resourceLibrary");
         check(resources->topLevelItemCount() > 0, "Expected resource library");
-        resources->setCurrentItem(resources->topLevelItem(0));
+        auto* browser = child<QWidget>(*window, "projectBrowser");
+        waitFor([&] { return !browser->property("indexing").toBool(); });
+        auto* categories = child<QComboBox>(*window, "resourceCategory");
+        categories->setCurrentIndex(categories->findData("Scenes"));
+        check(resources->topLevelItemCount() == 1, "Category filter must hide other groups");
+        auto* search = child<QLineEdit>(*window, "resourceSearch");
+        search->setText("missing-resource-fixture");
+        check(resources->topLevelItemCount() == 0, "Search must intersect the category filter");
+        search->clear();
+        categories->setCurrentIndex(0);
+        auto* folders = child<QTreeWidget>(*window, "projectFolders");
+        check(folders->topLevelItem(0)->childCount() > 0, "Expected actual project folders");
+        folders->setCurrentItem(folders->topLevelItem(0)->child(0));
+        const auto prefix = folders->currentItem()->data(0, Qt::UserRole + 1).toString() + '/';
+        for (int group = 0; group < resources->topLevelItemCount(); ++group)
+            for (int row = 0; row < resources->topLevelItem(group)->childCount(); ++row)
+                check(resources->topLevelItem(group)
+                          ->child(row)
+                          ->data(0, Qt::UserRole + 1)
+                          .toString()
+                          .startsWith(prefix),
+                      "Folder filter leaked unrelated assets");
+        folders->setCurrentItem(folders->topLevelItem(0));
+        auto* dock = child<QDockWidget>(*window, "assets");
+        auto* detach = child<QPushButton>(*window, "floatResources");
+        detach->click();
+        check(dock->isFloating(), "Project browser must detach into its own window");
+        detach->click();
+        check(!dock->isFloating(), "Project browser must reattach");
+        QTreeWidgetItem* placeable = nullptr;
+        for (auto* row : resources->findItems("*", Qt::MatchWildcard | Qt::MatchRecursive))
+            if (!row->data(0, Qt::UserRole).toString().isEmpty()) {
+                placeable = row;
+                break;
+            }
+        check(placeable, "Expected a placeable resource, distinct from a source file");
+        resources->setCurrentItem(placeable);
         action("createResource");
         check(count() == originalCount + 3, "Resource must create a scene instance");
         const auto resourceId = tree->currentItem()->data(0, Qt::UserRole).toString().toStdString();
@@ -159,7 +197,8 @@ int main(int argc, char** argv) {
         reopened.reset();
         std::cout
             << "Editor workspace checks passed: native rendering/docks/resize, create, inspector, "
-               "duplicate, delete, undo/redo across save, reparent, resources, transform, reopen\n";
+               "duplicate, delete, undo/redo across save, reparent, resource "
+               "folders/categories/search/detach/placement, transform, reopen\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

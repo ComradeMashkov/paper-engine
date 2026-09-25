@@ -1,5 +1,5 @@
 find_package(Qt6 6.9 REQUIRED COMPONENTS Widgets Concurrent) # numbers: minimum tested Qt baseline.
-add_library(paper_editor_ui STATIC application.cpp viewport.cpp)
+add_library(paper_editor_ui STATIC application.cpp resource_browser.cpp viewport.cpp)
 paper_target(paper_editor_ui)
 target_link_libraries(paper_editor_ui PUBLIC Paper::Authoring Paper::Resources Paper::Runtime Qt6::Widgets PRIVATE Qt6::Concurrent)
 if(APPLE)

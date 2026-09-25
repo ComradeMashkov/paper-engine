@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0-alpha.1+build.4] - 2026-09-25
+
+- Add a Project browser with actual folders, grouped resource/file categories,
+  combined search and type filters, folder reveal, scene navigation and an explicit
+  floating-window toggle. Distinguish placeable definitions from source files.
+- Default the entire editor interface to English; preserve authored project text.
+- Verification: macOS editor and workspace targets built; isolated native Qt/GPU
+  workspace tests passed with Boxes and the host project, including folder/category/
+  search filters, detach/reattach, resource placement, save/reopen and resize.
+  Version and numeric ownership checks passed.
+- Limits: no import/reimport, thumbnails or file operations beyond folder reveal.
+  The asynchronous index ignores symlinks and reports a 100,000-entry cap.
+  Human visual acceptance and Windows/Linux remain unverified.
+
 ## [0.2.0-alpha.1+build.3] - 2026-09-23
 
 - Add a usable scene workspace: searchable resources, creation, subtree duplication

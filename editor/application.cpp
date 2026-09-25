@@ -1,6 +1,7 @@
 #include "paper/editor/application.hpp"
 #include "paper/authoring/document.hpp"
 #include "paper/content/document.hpp"
+#include "resource_browser.hpp"
 #include "viewport.hpp"
 #include "workspace.hpp"
 #include <QActionGroup>
@@ -223,7 +224,7 @@ class Window final : public QMainWindow {
             }
         };
         viewport_->failed = [this](std::string error) {
-            viewportError_ = tr("Ошибка 3D-вида: ") + text(error);
+            viewportError_ = tr("Viewport error: ") + text(error);
             problem(viewportError_);
         };
         viewport_->transformed = [this](Viewport::Tool tool, Vec3 delta, float value) {
@@ -234,46 +235,46 @@ class Window final : public QMainWindow {
         auto* layout = new QVBoxLayout(hierarchy);
         sceneList_ = new QComboBox;
         sceneList_->setObjectName("sceneList");
-        sceneList_->setAccessibleName(tr("Сцена"));
+        sceneList_->setAccessibleName(tr("Scene"));
         layout->addWidget(sceneList_);
         auto* search = hierarchySearch_ = new QLineEdit;
-        search->setPlaceholderText(tr("Поиск объекта или ID"));
+        search->setPlaceholderText(tr("Search object or ID"));
         layout->addWidget(search);
         tree_ = new QTreeWidget;
         tree_->setObjectName("sceneHierarchy");
-        tree_->setAccessibleName(tr("Объекты сцены"));
+        tree_->setAccessibleName(tr("Scene hierarchy"));
         tree_->setAlternatingRowColors(true);
         tree_->setContextMenuPolicy(Qt::ActionsContextMenu);
         tree_->setMinimumWidth(hierarchyMinimumWidth);
-        tree_->setHeaderLabels({tr("Объект"), tr("ID")});
+        tree_->setHeaderLabels({tr("Object"), tr("ID")});
         layout->addWidget(tree_);
-        dock(tr("Объекты"), "hierarchy", hierarchy, Qt::LeftDockWidgetArea);
+        dock(tr("Hierarchy"), "hierarchy", hierarchy, Qt::LeftDockWidgetArea);
         auto* inspector = new QWidget;
         auto* form = new QFormLayout(inspector);
-        selection_ = new QLabel(tr("Выберите объект"));
+        selection_ = new QLabel(tr("Select an object"));
         selection_->setWordWrap(true);
         form->addRow(selection_);
         name_ = new QLineEdit;
         name_->setObjectName("nodeLabel");
-        name_->setAccessibleName(tr("Имя объекта"));
-        form->addRow(tr("Имя / ключ локализации"), name_);
+        name_->setAccessibleName(tr("Object name"));
+        form->addRow(tr("Name / Localization key"), name_);
         connect(name_, &QLineEdit::editingFinished, this,
                 [this] { editProperty("label", name_->text().toStdString()); });
         parent_ = new QComboBox;
         parent_->setObjectName("nodeParent");
-        parent_->setAccessibleName(tr("Родитель объекта"));
-        form->addRow(tr("Родитель"), parent_);
+        parent_->setAccessibleName(tr("Object parent"));
+        form->addRow(tr("Parent"), parent_);
         connect(parent_, &QComboBox::activated, this,
                 [this] { reparent(parent_->currentData().toString().toStdString()); });
         resource_ = new QComboBox;
         resource_->setObjectName("nodeResource");
-        resource_->setAccessibleName(tr("Ресурс объекта"));
-        form->addRow(tr("Ресурс"), resource_);
+        resource_->setAccessibleName(tr("Object resource"));
+        form->addRow(tr("Resource"), resource_);
         connect(resource_, &QComboBox::activated, this, [this] {
             editProperty("resource", resource_->currentData().toString().toStdString());
         });
-        const std::array<QString, 5> labels{tr("X, м"), tr("Y, м"), tr("Z, м"), tr("Поворот Y, °"),
-                                            tr("Масштаб")};
+        const std::array<QString, 5> labels{tr("X, m"), tr("Y, m"), tr("Z, m"), tr("Y rotation, °"),
+                                            tr("Scale")};
         for (size_t i = 0; i < fields_.size(); ++i) {
             auto* spin = fields_[i] = new QDoubleSpinBox;
             spin->setObjectName(QString("transform%1").arg(i));
@@ -292,62 +293,57 @@ class Window final : public QMainWindow {
             form->addRow(labels[i], spin);
             connect(spin, &QDoubleSpinBox::editingFinished, this, [this, i] { change(i); });
         }
-        auto* hint = new QLabel(tr("Локальные координаты относительно родителя. Изменение создаёт "
-                                   "явное переопределение шаблона."));
+        auto* hint = new QLabel(tr("Coordinates are local to the parent. Editing creates "
+                                   "an explicit template override."));
         hint->setWordWrap(true);
         form->addRow(hint);
-        shadow_ = new QCheckBox(tr("Отбрасывает тень"));
+        shadow_ = new QCheckBox(tr("Cast shadows"));
         connect(shadow_, &QCheckBox::clicked, this,
                 [this](bool checked) { editProperty("shadow", checked); });
         form->addRow(shadow_);
-        auto* reset = new QPushButton(tr("Сбросить трансформ к шаблону"));
+        auto* reset = new QPushButton(tr("Reset Transform to Template"));
         connect(reset, &QPushButton::clicked, this, [this] { resetTransform(); });
         form->addRow(reset);
         auto* scroll = new QScrollArea;
         scroll->setWidgetResizable(true);
         scroll->setWidget(inspector);
         scroll->setMinimumWidth(inspectorMinimumWidth);
-        dock(tr("Свойства"), "inspector", scroll, Qt::RightDockWidgetArea);
-        auto* assets = new QWidget;
-        auto* assetsLayout = new QVBoxLayout(assets);
-        assetSearch_ = new QLineEdit;
-        assetSearch_->setPlaceholderText(tr("Поиск ресурса…"));
-        assetsLayout->addWidget(assetSearch_);
-        assets_ = new QTreeWidget;
-        assets_->setObjectName("resourceLibrary");
-        assets_->setAccessibleName(tr("Библиотека ресурсов"));
-        assets_->setHeaderLabels({tr("Ресурс"), tr("Тип")});
-        assets_->setAlternatingRowColors(true);
-        assetsLayout->addWidget(assets_);
-        auto* instantiate = new QPushButton(tr("Добавить в сцену"));
-        assetsLayout->addWidget(instantiate);
-        connect(instantiate, &QPushButton::clicked, this, [this] { createResource(); });
-        connect(assets_, &QTreeWidget::itemDoubleClicked, this, [this] { createResource(); });
-        connect(assetSearch_, &QLineEdit::textChanged, this, [this](const QString& query) {
-            for (int i = 0; i < assets_->topLevelItemCount(); ++i) {
-                auto* item = assets_->topLevelItem(i);
-                item->setHidden(!item->text(0).contains(query, Qt::CaseInsensitive));
-            }
-        });
-        dock(tr("Ресурсы проекта"), "assets", assets, Qt::BottomDockWidgetArea);
+        dock(tr("Inspector"), "inspector", scroll, Qt::RightDockWidgetArea);
+        assets_ = new ResourceBrowser;
+        assets_->setObjectName("projectBrowser");
+        assets_->instantiate = [this](const std::string& id) { createNode(id); };
+        assets_->openScene = [this](const fs::path& path) {
+            const auto index = sceneList_->findData(pathText(path));
+            if (index >= 0)
+                sceneList_->setCurrentIndex(index);
+            else
+                statusBar()->showMessage(tr("This scene is not included in the project manifest"));
+        };
+        assets_->floatPanel = [this] {
+            auto* panel = findChild<QDockWidget*>("assets");
+            panel->setFloating(!panel->isFloating());
+            panel->show();
+            panel->raise();
+        };
+        dock(tr("Project"), "assets", assets_, Qt::BottomDockWidgetArea);
         problems_ = new QListWidget;
         problems_->setObjectName("projectProblems");
-        dock(tr("Проверка проекта"), "problems", problems_, Qt::BottomDockWidgetArea);
-        auto* file = menuBar()->addMenu(tr("Файл"));
-        auto* open = file->addAction(tr("Открыть проект…"));
+        dock(tr("Problems"), "problems", problems_, Qt::BottomDockWidgetArea);
+        auto* file = menuBar()->addMenu(tr("File"));
+        auto* open = file->addAction(tr("Open Project…"));
         open->setShortcut(QKeySequence::Open);
         connect(open, &QAction::triggered, this, [this] {
             if (confirmChanges())
                 chooseProject();
         });
-        save_ = file->addAction(tr("Сохранить сцену"));
+        save_ = file->addAction(tr("Save Scene"));
         save_->setObjectName("saveScene");
         save_->setShortcut(QKeySequence::Save);
         connect(save_, &QAction::triggered, this, [this] {
             if (current_)
                 save(current_);
         });
-        auto* saveAll = file->addAction(tr("Сохранить все сцены"));
+        auto* saveAll = file->addAction(tr("Save All Scenes"));
         saveAll->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
         connect(saveAll, &QAction::triggered, this, [this] {
             if (project_)
@@ -355,28 +351,28 @@ class Window final : public QMainWindow {
                     if (!save(doc))
                         break;
         });
-        auto* exit = file->addAction(tr("Закрыть"));
+        auto* exit = file->addAction(tr("Close"));
         exit->setShortcut(QKeySequence::Quit);
         connect(exit, &QAction::triggered, this, &QWidget::close);
-        auto* edit = menuBar()->addMenu(tr("Правка"));
-        auto* undo = undo_.createUndoAction(this, tr("Отменить"));
+        auto* edit = menuBar()->addMenu(tr("Edit"));
+        auto* undo = undo_.createUndoAction(this, tr("Undo"));
         undo->setObjectName("undo");
         undo->setShortcut(QKeySequence::Undo);
         edit->addAction(undo);
-        auto* redo = undo_.createRedoAction(this, tr("Повторить"));
+        auto* redo = undo_.createRedoAction(this, tr("Redo"));
         redo->setObjectName("redo");
         redo->setShortcut(QKeySequence::Redo);
         edit->addAction(redo);
-        auto* create = menuBar()->addMenu(tr("Объект"));
-        auto* group = create->addAction(tr("Создать пустой объект"));
+        auto* create = menuBar()->addMenu(tr("Object"));
+        auto* group = create->addAction(tr("Create Empty"));
         group->setObjectName("createGroup");
         connect(group, &QAction::triggered, this, [this] { createNode(""); });
-        auto* instance = create->addAction(tr("Добавить выбранный ресурс"));
+        auto* instance = create->addAction(tr("Add Selected Resource"));
         instance->setObjectName("createResource");
         connect(instance, &QAction::triggered, this, [this] { createResource(); });
-        duplicate_ = create->addAction(tr("Дублировать"));
+        duplicate_ = create->addAction(tr("Duplicate"));
         duplicate_->setObjectName("duplicateNode");
-        remove_ = create->addAction(tr("Удалить с дочерними объектами"));
+        remove_ = create->addAction(tr("Delete with Children"));
         remove_->setObjectName("deleteNode");
         for (auto* action : {duplicate_, remove_}) {
             action->setShortcutContext(Qt::WidgetShortcut);
@@ -387,14 +383,14 @@ class Window final : public QMainWindow {
         remove_->setShortcuts({QKeySequence(Qt::Key_Delete), QKeySequence(Qt::Key_Backspace)});
         connect(duplicate_, &QAction::triggered, this, [this] { duplicateNode(); });
         connect(remove_, &QAction::triggered, this, [this] { deleteNode(); });
-        auto* view = menuBar()->addMenu(tr("Вид"));
-        auto* frame = view->addAction(tr("Приблизить выбранный объект"));
+        auto* view = menuBar()->addMenu(tr("View"));
+        auto* frame = view->addAction(tr("Frame Selected"));
         frame->setShortcut(Qt::Key_F);
         frame->setShortcutContext(Qt::WidgetShortcut);
         viewport_->addAction(frame);
         tree_->addAction(frame);
         connect(frame, &QAction::triggered, this, [this] { viewport_->frame(selected_); });
-        auto* refresh = view->addAction(tr("Обновить 3D-вид"));
+        auto* refresh = view->addAction(tr("Refresh Viewport"));
         refresh->setShortcut(QKeySequence::Refresh);
         connect(refresh, &QAction::triggered, this, [this] {
             ++revision_;
@@ -402,13 +398,13 @@ class Window final : public QMainWindow {
         });
         for (auto* panel : findChildren<QDockWidget*>())
             view->addAction(panel->toggleViewAction());
-        auto* resetLayout = view->addAction(tr("Восстановить расположение панелей"));
+        auto* resetLayout = view->addAction(tr("Reset Panel Layout"));
         connect(resetLayout, &QAction::triggered, this, [this] {
             restoreState(defaultLayout_);
             for (auto* dock : findChildren<QDockWidget*>())
                 dock->show();
         });
-        auto* toolbar = addToolBar(tr("Проект"));
+        auto* toolbar = addToolBar(tr("Project"));
         toolbar->setObjectName("projectToolbar");
         toolbar->addAction(open);
         toolbar->addAction(save_);
@@ -424,11 +420,10 @@ class Window final : public QMainWindow {
         save_->setIcon(style()->standardIcon(QStyle::SP_DialogSaveButton));
         remove_->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
         addToolBarBreak();
-        auto* tools = addToolBar(tr("Инструменты сцены"));
+        auto* tools = addToolBar(tr("Scene Tools"));
         tools->setObjectName("sceneTools");
         auto* modes = new QActionGroup(this);
-        const std::array<QString, 4> titles{tr("Выбор"), tr("Перемещение"), tr("Поворот Y"),
-                                            tr("Масштаб")};
+        const std::array<QString, 4> titles{tr("Select"), tr("Move"), tr("Rotate Y"), tr("Scale")};
         const std::array<int, 4> shortcuts{Qt::Key_Q, Qt::Key_W, Qt::Key_E, Qt::Key_R};
         for (size_t i = 0; i < titles.size(); ++i) {
             auto* action = tools->addAction(titles[i]);
@@ -436,9 +431,8 @@ class Window final : public QMainWindow {
             action->setChecked(i == 1);
             modes->addAction(action);
             // Fly-camera WASD is handled directly by the viewport while RMB is held.
-            action->setToolTip(
-                titles[i] +
-                tr(" • клавиша %1 во viewport").arg(QKeySequence(shortcuts[i]).toString()));
+            action->setToolTip(titles[i] +
+                               tr(" • %1 in viewport").arg(QKeySequence(shortcuts[i]).toString()));
             connect(action, &QAction::triggered, this,
                     [this, i] { viewport_->tool(static_cast<Viewport::Tool>(i)); });
         }
@@ -447,14 +441,14 @@ class Window final : public QMainWindow {
             toolActions_.at(static_cast<int>(tool))->trigger();
         };
         tools->addSeparator();
-        auto* grid = tools->addAction(tr("Сетка X-ray"));
+        auto* grid = tools->addAction(tr("X-ray Grid"));
         grid->setCheckable(true);
         grid->setChecked(false);
         connect(grid, &QAction::toggled, this, [this](bool checked) { viewport_->grid(checked); });
-        auto* snap = tools->addAction(tr("Привязка: 0,5 м / 15° / 0,1"));
+        auto* snap = tools->addAction(tr("Snap: 0.5 m / 15° / 0.1"));
         snap->setCheckable(true);
         connect(snap, &QAction::toggled, this, [this](bool checked) { viewport_->snap(checked); });
-        auto* navigation = new QLabel(tr("  ПКМ + WASD/QE — полёт • СКМ — сдвиг • F — фокус"));
+        auto* navigation = new QLabel(tr("  RMB + WASD/QE: Fly • MMB: Pan • F: Frame"));
         tools->addWidget(navigation);
         connect(sceneList_, &QComboBox::currentIndexChanged, this, [this] { selectScene(); });
         connect(tree_, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem* item) {
@@ -525,8 +519,8 @@ class Window final : public QMainWindow {
         statusBar()->showMessage(error);
     }
     void chooseProject() {
-        const auto path = QFileDialog::getOpenFileName(this, tr("Открыть проект"), {},
-                                                       tr("Проект Paper (*.paperproject)"));
+        const auto path = QFileDialog::getOpenFileName(this, tr("Open Project"), {},
+                                                       tr("Paper Project (*.paperproject)"));
         if (!path.isEmpty())
             openProject(filePath(path));
     }
@@ -563,7 +557,7 @@ class Window final : public QMainWindow {
             updateState();
         } catch (const std::exception& error) {
             problem(text(error.what()));
-            QMessageBox::warning(this, tr("Проект не открыт"), text(error.what()));
+            QMessageBox::warning(this, tr("Cannot Open Project"), text(error.what()));
         }
     }
     void selectScene() {
@@ -588,7 +582,7 @@ class Window final : public QMainWindow {
             if (project_->labels.contains(label))
                 label = project_->labels.at(label);
             if (label.empty())
-                label = effective.value("kind", "Объект");
+                label = effective.value("kind", "Object");
             auto* item = new QTreeWidgetItem({text(label), text(id)});
             item->setData(0, Qt::UserRole, text(id));
             items_[id] = item;
@@ -616,7 +610,7 @@ class Window final : public QMainWindow {
         const bool available = current_ && !selected_.empty();
         for (auto* field : fields_)
             field->setEnabled(available);
-        selection_->setText(available ? text(selected_) : tr("Выберите объект"));
+        selection_->setText(available ? text(selected_) : tr("Select an object"));
         viewport_->selection(selected_);
         name_->setEnabled(available);
         parent_->setEnabled(available);
@@ -630,7 +624,7 @@ class Window final : public QMainWindow {
         if (available) {
             const auto effective = project_->effective(current_->node(selected_));
             name_->setText(text(effective.value("label", "")));
-            parent_->addItem(tr("Корень сцены"), "");
+            parent_->addItem(tr("Scene root"), "");
             const auto children = descendants(selected_);
             for (const auto& node : current_->nodes()) {
                 const auto id = node.at("id").get<std::string>();
@@ -638,7 +632,7 @@ class Window final : public QMainWindow {
                     parent_->addItem(text(id), text(id));
             }
             parent_->setCurrentIndex(parent_->findData(text(effective.value("parent", ""))));
-            resource_->addItem(tr("Без геометрии"), "");
+            resource_->addItem(tr("No geometry"), "");
             for (const auto& [id, asset] : package_->assets)
                 resource_->addItem(text(id), text(id));
             resource_->setCurrentIndex(resource_->findData(text(effective.value("resource", ""))));
@@ -675,18 +669,27 @@ class Window final : public QMainWindow {
         editProperty(name, after);
     }
     void populateAssets() {
-        assets_->clear();
-        if (!package_)
+        if (!package_ || !project_)
             return;
-        for (const auto& [id, asset] : package_->assets) {
-            auto* item = new QTreeWidgetItem(assets_, {text(id), asset->model       ? tr("Модель")
-                                                                 : asset->billboard ? tr("Спрайт")
-                                                                                    : tr("Меш")});
-            item->setData(0, Qt::UserRole, text(id));
+        std::vector<ResourceEntry> resources;
+        ResourceStore files(project_->root);
+        const auto world = content::parse(project_->sources.at(files.resolve(project_->manifest)),
+                                          project_->manifest.string());
+        for (const auto& relative : world.at("world").at("resources")) {
+            const fs::path path = relative.get<std::string>();
+            const auto source =
+                content::parse(project_->sources.at(files.resolve(path)), path.string());
+            for (const auto& value : source.at("resources").at("resources")) {
+                const auto id = value.at("id").get<std::string>();
+                const auto& asset = package_->assets.at(id);
+                resources.push_back({text(id),
+                                     asset->model       ? tr("Models")
+                                     : asset->billboard ? tr("Sprites")
+                                                        : tr("Meshes"),
+                                     pathText(path), text(id)});
+            }
         }
-        assets_->resizeColumnToContents(0);
-        if (!assetSearch_->text().isEmpty())
-            emit assetSearch_->textChanged(assetSearch_->text());
+        assets_->project(project_->root, std::move(resources));
     }
     std::set<std::string> descendants(const std::string& id) const {
         std::set<std::string> result{id};
@@ -756,7 +759,7 @@ class Window final : public QMainWindow {
         try {
             auto candidate = *current_;
             setEffectiveProperty(candidate, name, value);
-            commitNodes(candidate.nodes(), tr("Изменить %1").arg(text(name)), selected_);
+            commitNodes(candidate.nodes(), tr("Change %1").arg(text(name)), selected_);
         } catch (const std::exception& error) {
             problem(text(error.what()));
             inspect();
@@ -789,11 +792,11 @@ class Window final : public QMainWindow {
         return "node." + QUuid::createUuid().toString(QUuid::WithoutBraces).toStdString();
     }
     void createResource() {
-        if (!assets_->currentItem()) {
-            statusBar()->showMessage(tr("Выберите ресурс в библиотеке внизу окна"));
+        if (assets_->selectedResource().empty()) {
+            statusBar()->showMessage(tr("Select a placeable resource in the Project panel"));
             return;
         }
-        createNode(assets_->currentItem()->data(0, Qt::UserRole).toString().toStdString());
+        createNode(assets_->selectedResource());
     }
     void createNode(const std::string& resource) {
         if (!current_)
@@ -802,12 +805,12 @@ class Window final : public QMainWindow {
         const auto id = newId();
         const auto position = viewport_->insertionPoint();
         ContentValue node{{"id", id},
-                          {"label", resource.empty() ? "Новый объект" : resource},
+                          {"label", resource.empty() ? "New Object" : resource},
                           {"position", ContentValue::array({position.x, position.y, position.z})}};
         if (!resource.empty())
             node["resource"] = resource;
         nodes.elements().push_back(std::move(node));
-        commitNodes(std::move(nodes), tr("Создать объект"), id);
+        commitNodes(std::move(nodes), tr("Create Object"), id);
     }
     void deleteNode() {
         if (!current_ || selected_.empty())
@@ -817,7 +820,7 @@ class Window final : public QMainWindow {
         std::erase_if(nodes.elements(), [&](const auto& node) {
             return ids.contains(node.at("id").template get<std::string>());
         });
-        commitNodes(std::move(nodes), tr("Удалить %1 объект(ов)").arg(ids.size()), "");
+        commitNodes(std::move(nodes), tr("Delete %1 object(s)").arg(ids.size()), "");
     }
     void duplicateNode() {
         if (!current_ || selected_.empty())
@@ -836,8 +839,8 @@ class Window final : public QMainWindow {
             for (const auto field :
                  {"actions", "stateKey", "itemInstance", "legacyDoor", "visibleWhen"})
                 if (effective.contains(field)) {
-                    problem(tr("У объекта есть игровая привязка %1. Для независимой копии добавьте "
-                               "его ресурс из библиотеки.")
+                    problem(tr("This object has the game binding %1. For an independent copy, add "
+                               "its resource from the Project panel.")
                                 .arg(text(field)));
                     return;
                 }
@@ -854,7 +857,7 @@ class Window final : public QMainWindow {
             }
             nodes.elements().push_back(std::move(clone));
         }
-        commitNodes(std::move(nodes), tr("Дублировать объект"), remap.at(selected_));
+        commitNodes(std::move(nodes), tr("Duplicate Object"), remap.at(selected_));
     }
     const SceneNode* compiledNode(std::string_view id) const {
         if (package_)
@@ -885,7 +888,7 @@ class Window final : public QMainWindow {
             candidate.setProperty(selected_, "scale",
                                   node->transform.scale /
                                       (destination ? destination->transform.scale : 1));
-            commitNodes(candidate.nodes(), tr("Изменить родителя"), selected_);
+            commitNodes(candidate.nodes(), tr("Change Parent"), selected_);
         } catch (const std::exception& error) {
             problem(text(error.what()));
             inspect();
@@ -911,7 +914,7 @@ class Window final : public QMainWindow {
                 candidate.setProperty(selected_, "yaw", effective.value("yaw", 0.0) + amount);
             else if (tool == Viewport::Tool::Scale)
                 candidate.setProperty(selected_, "scale", effective.value("scale", 1.0) * amount);
-            commitNodes(candidate.nodes(), tr("Трансформировать объект"), selected_);
+            commitNodes(candidate.nodes(), tr("Transform Object"), selected_);
         } catch (const std::exception& error) {
             problem(text(error.what()));
             inspect();
@@ -933,7 +936,7 @@ class Window final : public QMainWindow {
                     node.erase("remove");
             }
         candidate.replaceNodes(std::move(nodes));
-        commitNodes(candidate.nodes(), tr("Сбросить трансформ"), selected_);
+        commitNodes(candidate.nodes(), tr("Reset Transform"), selected_);
     }
     void requestPreview() {
         viewport_->editingEnabled(false);
@@ -950,13 +953,13 @@ class Window final : public QMainWindow {
             return;
         }
         runningRevision_ = revision_;
-        statusBar()->showMessage(tr("Проверка сцены…"));
+        statusBar()->showMessage(tr("Validating scene…"));
         worker_.setFuture(QtConcurrent::run(compile, project_->root, project_->manifest,
                                             project_->snapshot(), options_));
     }
     void publish(const PreviewResult& result) {
         if (!result.package) {
-            problem(tr("Сцена требует исправления: ") + text(result.error));
+            problem(tr("Scene validation failed: ") + text(result.error));
             return;
         }
         viewport_->editingEnabled(true);
@@ -992,8 +995,9 @@ class Window final : public QMainWindow {
             project_->verifySources();
             if (bytes(document->path()) != document->original()) {
                 file.cancelWriting();
-                throw std::runtime_error("Файл изменён вне редактора. Запись отменена; откройте "
-                                         "проект заново после согласования изменений.");
+                throw std::runtime_error(
+                    "The file changed outside the editor. Saving was canceled; reconcile "
+                    "the changes and reopen the project.");
             }
             if (!file.commit())
                 throw std::runtime_error(file.errorString().toStdString());
@@ -1003,7 +1007,7 @@ class Window final : public QMainWindow {
             return true;
         } catch (const std::exception& error) {
             problem(text(error.what()));
-            QMessageBox::warning(this, tr("Сцена не сохранена"), text(error.what()));
+            QMessageBox::warning(this, tr("Cannot Save Scene"), text(error.what()));
             return false;
         }
     }
@@ -1017,8 +1021,8 @@ class Window final : public QMainWindow {
         if (dirty.empty())
             return true;
         const auto answer = QMessageBox::question(
-            this, tr("Несохранённые изменения"),
-            tr("Сохранить изменённые сцены перед закрытием? Каждая сцена сохраняется отдельно."),
+            this, tr("Unsaved Changes"),
+            tr("Save changed scenes before closing? Each scene is saved separately."),
             QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Cancel);
         if (answer == QMessageBox::Cancel)
             return false;
@@ -1036,21 +1040,20 @@ class Window final : public QMainWindow {
                        (dirty ? " *" : ""));
         save_->setEnabled(current_ && current_->dirty());
         if (project_)
-            statusBar()->showMessage(dirty ? tr("Есть несохранённые изменения")
-                                           : tr("Сцена сохранена • Правая кнопка: осмотр • Колесо: "
-                                                "движение • F: выбранный объект"));
+            statusBar()->showMessage(dirty ? tr("Unsaved changes")
+                                           : tr("Scene saved • RMB: Look • Wheel: "
+                                                "Move • F: Frame Selected"));
         else
-            statusBar()->showMessage(tr("Откройте проект .paperproject"));
+            statusBar()->showMessage(tr("Open a .paperproject file"));
     }
     QByteArray defaultLayout_;
     QList<QAction*> toolActions_;
     QLineEdit* name_ = nullptr;
     QLineEdit* hierarchySearch_ = nullptr;
-    QLineEdit* assetSearch_ = nullptr;
     QComboBox* parent_ = nullptr;
     QComboBox* resource_ = nullptr;
     QCheckBox* shadow_ = nullptr;
-    QTreeWidget* assets_ = nullptr;
+    ResourceBrowser* assets_ = nullptr;
     QAction* duplicate_ = nullptr;
     QAction* remove_ = nullptr;
     QString viewportError_;

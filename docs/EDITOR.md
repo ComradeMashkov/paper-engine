@@ -12,9 +12,16 @@ platforms and recovery remain outstanding.
 - Left: scene selector, searchable hierarchy with readable labels and stable IDs.
 - Right: label/localization key, parent, resource, local XYZ in metres, yaw in degrees,
   uniform scale, shadow flag and reset of transform overrides to the template.
-- Bottom: searchable resource library with type, double-click or Add to Scene,
-  and validation problems. Assets already declared by the project can be placed;
-  this does not import new files or create resource definitions.
+- The editor interface defaults to English; project labels/localized game content are
+  displayed as authored. Editor translations can be added later.
+- Bottom: Project browser with actual asset folders, category groups/filter, search
+  across names/IDs/paths within the selected subtree, file paths and a distinct
+  Placeable marker for declared resources. Double-click a resource or Add to Scene
+  to instantiate; double-click a declared scene file to switch scenes. Open Folder
+  reveals its folder in the OS file manager; Float / Dock opens a separate window.
+  Refresh scans files asynchronously, without following symlinks, with a visible
+  100,000-entry index limit. Categories classify files; they do not guarantee import
+  support. No import, file editing, moving or deletion is offered yet.
 - Object menu/toolbar: empty object, resource instance, duplicate subtree with new
   IDs and remapped internal parents, delete subtree. Duplicate refuses known host
   bindings (actions, state, item instances, legacy doors and visibility expressions).
