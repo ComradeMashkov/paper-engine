@@ -4,6 +4,7 @@
 #include "paper/content/document.hpp"
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
@@ -38,6 +39,7 @@ template <class F> void waitFor(F condition) {
 } // namespace
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
+    const char* stage = "initialization";
     try {
         check(argc == 2, "Pass an isolated Paper project path");
         QTemporaryDir temporary;
@@ -83,7 +85,10 @@ int main(int argc, char** argv) {
         };
         const auto action = [&](const char* name) {
             auto* item = child<QAction>(*window, name);
-            check(item->isEnabled(), "Expected enabled action");
+            if (!item->isEnabled())
+                throw std::runtime_error(
+                    std::string("Expected enabled action: ") + name +
+                    (problems->count() ? "; " + problems->item(0)->text().toStdString() : ""));
             item->trigger();
         };
         const auto save = [&] {
@@ -112,6 +117,28 @@ int main(int argc, char** argv) {
         check(node(persisted, id).at("label") == "Edited group" &&
                   node(persisted, id).at("position").at(0) == 7.25,
               "Inspector edits must persist");
+        stage = "free transforms";
+        if (persisted.at("version") == 3) {
+            auto* quaternion = child<QDoubleSpinBox>(*window, "transform5");
+            auto* axisScale = child<QDoubleSpinBox>(*window, "transform9");
+            check(quaternion->isEnabled() && axisScale->isEnabled(),
+                  "v3 transform controls must be available");
+            quaternion->setValue(.3);
+            QMetaObject::invokeMethod(quaternion, "editingFinished", Qt::DirectConnection);
+            axisScale->setValue(2);
+            QMetaObject::invokeMethod(axisScale, "editingFinished", Qt::DirectConnection);
+            persisted = save();
+            check(node(persisted, id).at("rotation").size() == 4 &&
+                      node(persisted, id).at("scale").at(0).get<double>() == 2,
+                  "free rotation and axis scale persist through the Inspector");
+            viewport->transformed(paper::editor::Viewport::Tool::Rotate, {1, 0, 0}, .25f);
+            persisted = save();
+            check(node(persisted, id).contains("rotation") && !node(persisted, id).contains("yaw"),
+                  "world-X rotation uses full quaternion authoring");
+            check(std::abs(node(persisted, id).at("scale").at(0).get<double>() - 2) < .0001,
+                  "world rotation retains editable axis-scale magnitude");
+        }
+        stage = "structure edits";
         action("duplicateNode");
         check(count() == originalCount + 2, "Duplicate must add a node");
         action("undo");
@@ -127,6 +154,7 @@ int main(int argc, char** argv) {
         save();
         const auto duplicateId =
             tree->currentItem()->data(0, Qt::UserRole).toString().toStdString();
+        stage = "reparenting";
         auto* parent = child<QComboBox>(*window, "nodeParent");
         const auto parentIndex = parent->findData(QString::fromStdString(id));
         parent->setCurrentIndex(parentIndex);
@@ -139,6 +167,7 @@ int main(int argc, char** argv) {
         persisted = save();
         check(!node(persisted, duplicateId).contains("parent"),
               "Detach must remove parent, not write an invalid empty ID");
+        stage = "resource browser";
         auto* resources = child<QTreeWidget>(*window, "resourceLibrary");
         check(resources->topLevelItemCount() > 0, "Expected resource library");
         auto* browser = child<QWidget>(*window, "projectBrowser");
@@ -178,10 +207,31 @@ int main(int argc, char** argv) {
             }
         check(placeable, "Expected a placeable resource, distinct from a source file");
         resources->setCurrentItem(placeable);
+        stage = "resource placement";
         action("createResource");
         check(count() == originalCount + 3, "Resource must create a scene instance");
         const auto resourceId = tree->currentItem()->data(0, Qt::UserRole).toString().toStdString();
         persisted = save();
+        stage = "collider Inspector";
+        if (persisted.at("version") == 3) {
+            auto* shape = child<QComboBox>(*window, "collisionShape");
+            shape->setCurrentIndex(1);
+            QMetaObject::invokeMethod(shape, "activated", Qt::DirectConnection, Q_ARG(int, 1));
+            auto* collision = child<QCheckBox>(*window, "nodeCollision");
+            collision->setChecked(true);
+            QMetaObject::invokeMethod(collision, "clicked", Qt::DirectConnection,
+                                      Q_ARG(bool, true));
+            auto* category = child<QLineEdit>(*window, "collisionCategory");
+            auto* mask = child<QLineEdit>(*window, "collisionMask");
+            category->setText("4");
+            mask->setText("4");
+            QMetaObject::invokeMethod(category, "editingFinished", Qt::DirectConnection);
+            persisted = save();
+            check(node(persisted, resourceId).at("collision").at("shape") == "mesh" &&
+                      node(persisted, resourceId).at("collision").at("category") == 4,
+                  "collider Inspector saves geometry and layers");
+        }
+        stage = "resource transform";
         const auto oldX = node(persisted, resourceId).at("position").at(0).get<double>();
         viewport->transformed(paper::editor::Viewport::Tool::Move, {1, 0, 0}, 0);
         persisted = save();
@@ -198,6 +248,7 @@ int main(int argc, char** argv) {
         action("createGroup");
         const auto unsavedId = tree->currentItem()->data(0, Qt::UserRole).toString().toStdString();
         const auto diskBeforePlay = paper::content::read(scenePath);
+        stage = "Play lifecycle";
         action("play");
         check(!child<QAction>(*window, "play")->isEnabled(), "Play must disable duplicate launch");
         waitFor([&] {
@@ -230,6 +281,7 @@ int main(int argc, char** argv) {
         waitFor([&] { return viewport->renderedFrames() > beforeResize; });
         check(problems->count() == 0, "Native resize must keep rendering");
         // Closing a running session requests Stop and waits for its child to exit.
+        stage = "Play lifecycle";
         action("play");
         waitFor([&] { return play->state() == paper::editor::PlayController::State::Running; });
         window->close();
@@ -248,7 +300,7 @@ int main(int argc, char** argv) {
                "folders/categories/search/detach/placement, transform, isolated Play/Stop/close, "
                "reopen\n";
     } catch (const std::exception& error) {
-        std::cerr << error.what() << '\n';
+        std::cerr << stage << ": " << error.what() << '\n';
         return 1;
     }
 }

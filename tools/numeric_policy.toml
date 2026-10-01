@@ -3,8 +3,8 @@ reason = "Independent Unicode scalar and byte-boundary expectations including ma
 literal_sha256 = "e6fc219240ca7187614fd9dc3b185516fd3fd0e9ccf9ec9f3e8c08e606888f5c"
 
 ["tests/render/gpu_tests.cpp"]
-reason = "Independent tiny mesh/light/texture fixtures, readback pixel locations and GPU numeric tolerances. These are renderer validation inputs and expectations, not game content."
-literal_sha256 = "8f79d2803f6eb1b92daa29040e19760d00755ff9aed5e2fb7d98ce927f180ed8"
+reason = "Independent tiny mesh/light/texture fixtures, analytic baked affine geometry, readback pixel locations and GPU numeric tolerances. These are renderer validation inputs and expectations, not game content."
+literal_sha256 = "bd294fc43e1c05274bea40f99879f7b0ef784b0e53752e8c8af6faf8bf867447"
 
 ["tests/render/render_data_tests.cpp"]
 reason = "Independent projection, near/far and uniform-layout expectations using synthetic camera/light fixtures; formulas and bounds are kept independent."
@@ -24,8 +24,8 @@ reason = "Independent scene source fixtures: XYZ coordinates, scale and angle ov
 literal_sha256 = "bf442854e31d760b0fc7669a4efef2a02607a572c77f3ed5549fddb3badeddd6"
 
 ["tests/editor/workspace_tests.cpp"]
-reason = "Independent native workspace geometry, object counts, resource folder/category filters, unsaved Play snapshot/start point, Undo and asynchronous close expectations on disposable project copies."
-literal_sha256 = "458720785995683c94ec5b3d179f963c8034dd6e785027a732e88660bdca5713"
+reason = "Independent native workspace geometry, quaternion/axis-scale and collider-bitset expectations, object counts, resource filters, unsaved Play snapshot/start point, Undo and asynchronous close on disposable project copies."
+literal_sha256 = "0788085c7529d4ea8276fe1730f409a1d5c62717a50ad88bd4ef80f1298fd8c6"
 
 ["tests/editor/play_tests.cpp"]
 reason = "Independent process lifecycle fixtures: bounded event-loop waits and two runs verify snapshot isolation, cancellation, repeat, launch failure and escalation for an unresponsive test child."
@@ -40,12 +40,12 @@ reason = "Independent analytic rotation, anisotropic normal, sheared hierarchy, 
 literal_sha256 = "f54d42bcc34225fbad12b32eb810e40865c61d8b546fd9708d791400b42dcaf3"
 
 ["tests/physics/world_tests.cpp"]
-reason = "Independent metre/time/layer fixtures verify steps, steep slopes, clearance, continuous sweeps, scene rollback, capacity and malformed inputs without depending on implementation defaults."
-literal_sha256 = "63d8916e62e8447e78d99ba061692060ef55ca357e0a4b607c31818e7f34fd4a"
+reason = "Independent metre/time/layer fixtures verify steps, steep slopes, clearance, continuous sweeps, scene rollback, capacity, overflowing geometry and v3 template inheritance without depending on implementation defaults."
+literal_sha256 = "b50e16dac470dbaa9b5f757a0df0b1e1e39196f7f4e32102785b537c47842d76"
 
 ["tests/audio/bank_tests.cpp"]
 reason = "Independent source/zone positions, capacity counts, hand-authored RIFF PCM bytes, resampling range, malformed replacements and echo-decay thresholds verify the bank contract independently of defaults."
-literal_sha256 = "e360fbe21fda432a8a45967d590f23d743b831d3bf7492b843ae818ee5e248e6"
+literal_sha256 = "3c4cafb4e782a402ae66fa787a6783edeee400126a52af50579a9e264d0c4683"
 
 ["tests/editor/audio_bank_tests.cpp"]
 reason = "Independent editable source bytes and temporary-file scenarios exercise no-op/comment preservation, invalid edits and external-change protection without launching a game."
@@ -58,3 +58,7 @@ literal_sha256 = "93b4044651d5b0b3fd8d43c6e145439ec44bf262c7ed0aa7e0ced87ae1914f
 ["tests/ui/input_tests.cpp"]
 reason = "Independent ordered SDL edge/modifier/wheel samples verify host-to-UI event translation, repeat and focus/debug cancellation without constructing an application."
 literal_sha256 = "18464475ff35e0769c3045cabd089c728adeb6099212722452038c2ee8bae808"
+
+["tests/authoring/collision_tests.cpp"]
+reason = "Independent collider bitsets and nested/inline source-table fixtures verify editing, comment preservation, disable and Undo across Save without flattening authored metadata."
+literal_sha256 = "b2ca023a283e2b14c00421b64223420ba8b78a233530abf77ae428de29e44def"

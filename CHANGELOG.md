@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.8.1-alpha.1+build.10] - 2026-10-01
+
+- Fix collider source serialization and preserve nested-table comments, disable,
+  Undo and Save semantics. Retain pending collider shape choices in the Inspector.
+- Fix a temporary-lifetime error during world-axis rotation, preserve editable
+  axis-scale magnitudes and validate free transforms inherited from v3 templates.
+- Reject overflowing collider coordinates and triangle budgets before Jolt calls;
+  validate authored audio loops and zone ambience against their shared capacity.
+- Enable dependency RTTI for UBSan builds and add independent affine GPU,
+  v3 Inspector/template, collider authoring and capacity regressions.
+- Verification on macOS: all 15 CTest cases passed in Release and ASan/UBSan,
+  including Metal GPU and offscreen audio-bank editing. Native v2/v3 workspace
+  and isolated Play lifecycle tests passed; the v3 workspace also passed under
+  ASan/UBSan. Engine/editor and host application targets compiled. The real game
+  was not launched; other platforms and human visual acceptance remain unverified.
+
 ## [0.8.0-alpha.1+build.9] - 2026-10-01
 
 - Add shared panels, labels, buttons, toggles, sliders, lists and tooltips with a

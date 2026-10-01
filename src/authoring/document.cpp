@@ -26,6 +26,28 @@ size_t offset(std::string_view text, toml::source_position position) {
     return result;
 }
 std::string scalar(const ContentValue& value) {
+    if (value.is_object()) {
+        std::string result = "{";
+        bool first = true;
+        for (const auto& [key, child] : value.items()) {
+            if (!first)
+                result += ", ";
+            first = false;
+            result += scalar(ContentValue(key)) + " = " + scalar(child);
+        }
+        return result + "}";
+    }
+    if (value.is_array()) {
+        std::string result = "[";
+        bool first = true;
+        for (const auto& child : value) {
+            if (!first)
+                result += ", ";
+            first = false;
+            result += scalar(child);
+        }
+        return result + "]";
+    }
     const auto encoded = content::encode(ContentValue{{"value", value}});
     const auto first = encoded.find('=');
     require(first != std::string::npos, "Cannot encode property");
@@ -225,12 +247,50 @@ std::string SceneDocument::serialized() const {
         require(table, "Expected source node table");
         std::string added;
         for (const auto name : {"position", "yaw", "rotation", "basis", "scale", "label",
-                                "resource", "parent", "shadow", "remove"}) {
+                                "resource", "parent", "shadow", "collision", "remove"}) {
             const auto oldValue = before.contains(name) ? before.at(name) : ContentValue{};
             const auto newValue = after.contains(name) ? after.at(name) : ContentValue{};
             if (oldValue == newValue)
                 continue;
             if (const auto* original = table->get(name)) {
+                if (const auto* childTable = original->as_table();
+                    childTable && !childTable->is_inline()) {
+                    if (newValue.is_object()) {
+                        std::string inserted;
+                        for (const auto& [key, child] : *childTable) {
+                            const std::string field(key.str());
+                            const auto next =
+                                newValue.contains(field) ? newValue.at(field) : ContentValue{};
+                            if (oldValue.at(field) == next)
+                                continue;
+                            auto begin = offset(source_, child.source().begin),
+                                 end = offset(source_, child.source().end);
+                            if (next.is_null()) {
+                                const auto line = source_.rfind('\n', begin);
+                                begin = line == std::string::npos ? 0 : line + 1;
+                                patches.push_back({begin, end, ""});
+                            } else
+                                patches.push_back({begin, end, scalar(next)});
+                        }
+                        for (const auto& [key, child] : newValue.items())
+                            if (!oldValue.contains(key))
+                                inserted +=
+                                    scalar(ContentValue(key)) + " = " + scalar(child) + "\n";
+                        if (!inserted.empty()) {
+                            const auto at =
+                                lineEnd(source_, offset(source_, childTable->source().begin));
+                            patches.push_back({at, at, std::move(inserted)});
+                        }
+                    } else {
+                        const auto begin = offset(source_, childTable->source().begin);
+                        const auto previousLine = source_.rfind('\n', begin);
+                        patches.push_back({previousLine == std::string::npos ? 0 : previousLine + 1,
+                                           lineEnd(source_, regionEnd(source_, *childTable)), ""});
+                        if (!newValue.is_null())
+                            added += std::string(name) + " = " + scalar(newValue) + "\n";
+                    }
+                    continue;
+                }
                 auto begin = offset(source_, original->source().begin);
                 auto end = offset(source_, original->source().end);
                 if (newValue.is_null()) {

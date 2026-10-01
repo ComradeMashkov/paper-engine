@@ -1,9 +1,9 @@
 #include "paper/engine.hpp"
 #include "paper/assets/image.hpp"
 #include "paper/audio/bank.hpp"
-#include "paper/resources/resource_store.hpp"
 #include "paper/core/pixel_format.hpp"
 #include "paper/core/units.hpp"
+#include "paper/resources/resource_store.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>

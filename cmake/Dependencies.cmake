@@ -34,6 +34,8 @@ target_include_directories(paper_cgltf SYSTEM PUBLIC "${PROJECT_SOURCE_DIR}/vend
 target_compile_features(paper_cgltf PRIVATE cxx_std_20)
 
 # Pinned Jolt Physics 5.6.0 (MIT). Baseline CPU ISA, no upstream applications or LTO.
+# UBSan vptr instrumentation needs RTTI in both the adapter and the dependency.
+set(CPP_RTTI_ENABLED ${PAPER_ENABLE_SANITIZERS} CACHE BOOL "" FORCE)
 set(OVERRIDE_CXX_FLAGS OFF CACHE BOOL "" FORCE)
 set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
 set(ENABLE_ALL_WARNINGS OFF CACHE BOOL "" FORCE)

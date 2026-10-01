@@ -24,6 +24,9 @@ SceneColliders addSceneColliders(PhysicsWorld& world, const ScenePackage& packag
                                 for (auto triangle : *instance.mesh) {
                                     for (auto& vertex : triangle.v)
                                         vertex.p = instance.transform.point(vertex.p);
+                                    if (mesh.size() >= physicsLimits::triangles)
+                                        throw std::invalid_argument(
+                                            "Scene collider exceeds triangle budget");
                                     mesh.push_back(triangle);
                                 }
                     }

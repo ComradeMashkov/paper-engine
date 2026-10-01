@@ -109,6 +109,14 @@ ambience="hum"
         bindings.bind("copy." + std::to_string(k), "motor", "two");
     check(rejects([&] { bindings.bind("overflow", "motor"); }),
           "loop budget fails explicitly without evicting a source");
+    bad = bank;
+    for (size_t k = 0; k < 17; ++k) {
+        auto source = bank.sources[0];
+        source.id = "authored." + std::to_string(k);
+        bad.sources.push_back(source);
+    }
+    check(rejects([&] { validateAudioBank(bad); }),
+          "authored looping sources and zone ambience share the same capacity");
     SoundBank pcm;
     pcm.resize(bank.sounds.size());
     for (size_t k = 0; k < pcm.size(); ++k)

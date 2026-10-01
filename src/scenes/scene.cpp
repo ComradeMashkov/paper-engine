@@ -314,9 +314,7 @@ std::shared_ptr<ScenePackage> loadScenes(const std::filesystem::path& root,
                     (void)vec(t.at("position"));
                 if (t.contains("openOffset"))
                     (void)vec(t.at("openOffset"));
-                if (t.contains("scale"))
-                    (void)number(t.at("scale"), sceneLimits::scaleMinimum,
-                                 sceneLimits::scaleMaximum);
+                (void)readTransform(t);
                 if (t.contains("reach"))
                     (void)number(t.at("reach"), minimumExtentMeters, maximumReachMeters);
                 if (t.contains("inspectScale"))

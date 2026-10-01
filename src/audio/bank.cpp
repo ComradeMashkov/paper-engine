@@ -96,6 +96,12 @@ void validateAudioBank(const AudioBankDefinition& bank) {
         require(z.ambience.empty() || (sound(bank, z.ambience) && sound(bank, z.ambience)->loop),
                 "Acoustic ambience must reference a looping sound");
     }
+    const auto sourceLoops = std::ranges::count_if(
+        bank.sources, [&](const auto& s) { return sound(bank, s.sound)->loop; });
+    const auto zoneLoops =
+        std::ranges::count_if(bank.zones, [](const auto& z) { return !z.ambience.empty(); });
+    require(sourceLoops + zoneLoops <= static_cast<ptrdiff_t>(AudioMixer::maxLoops),
+            "Authored audio bank exceeds loop budget");
 }
 AudioBankDefinition parseAudioBank(std::string_view text, std::string_view name) {
     const auto root = content::parse(text, name);

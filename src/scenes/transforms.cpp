@@ -86,7 +86,14 @@ MeshTransform relativeTransform(const MeshTransform& parent, const MeshTransform
     result.rotation = (parent.rotation.inverse() * world.rotation).unit();
     const auto matrix = parent.linear().inverse() * world.linear();
     const auto q = result.rotation.inverse();
-    result.basis = {q.apply(matrix.x), q.apply(matrix.y), q.apply(matrix.z)};
+    result.scaleAxes = {length(matrix.x), length(matrix.y), length(matrix.z)};
+    if (!finite3(result.scaleAxes) || result.scaleAxes.x <= 0 || result.scaleAxes.y <= 0 ||
+        result.scaleAxes.z <= 0)
+        throw std::invalid_argument("Degenerate relative transform");
+    result.basis = {q.apply(matrix.x) / result.scaleAxes.x, q.apply(matrix.y) / result.scaleAxes.y,
+                    q.apply(matrix.z) / result.scaleAxes.z};
+    if (!result.valid())
+        throw std::invalid_argument("Invalid relative transform");
     return result;
 }
 } // namespace paper

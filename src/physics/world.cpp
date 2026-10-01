@@ -32,7 +32,7 @@ JPH::Quat j(Rotation3 q) {
 constexpr unsigned categoryBits = 32;
 constexpr float capsuleCentreFraction = .5f;
 constexpr unsigned maximumSubsteps = 256, maximumBodies = 65536, maximumPairs = 262144;
-constexpr size_t maximumTriangles = 50000;
+
 constexpr float maximumCoordinate = 10000, maximumVelocity = 1000, maximumHeight = 1000,
                 maximumFrameSeconds = 1;
 bool coordinate(Vec3 v) {
@@ -161,10 +161,15 @@ ColliderId PhysicsWorld::addBox(const Box3& local, const MeshTransform& transfor
     JPH::Array<JPH::Vec3> points;
     for (float x : {-1.f, 1.f})
         for (float y : {-1.f, 1.f})
-            for (float z : {-1.f, 1.f})
-                points.push_back(j(transform.rotation.inverse().apply(transform.vector(
+            for (float z : {-1.f, 1.f}) {
+                const auto baked = transform.rotation.inverse().apply(transform.vector(
                     local.center + local.orientation().apply(
-                                       {x * local.half.x, y * local.half.y, z * local.half.z})))));
+                                       {x * local.half.x, y * local.half.y, z * local.half.z})));
+                if (!coordinate(baked) ||
+                    !coordinate(transform.position + transform.rotation.apply(baked)))
+                    throw std::invalid_argument("Box collider exceeds coordinate budget");
+                points.push_back(j(baked));
+            }
     JPH::ConvexHullShapeSettings settings(points);
     settings.mMaxConvexRadius = 0;
     return state_->add(checked(settings.Create()), filter, transform.position, transform.rotation);
@@ -172,7 +177,7 @@ ColliderId PhysicsWorld::addBox(const Box3& local, const MeshTransform& transfor
 ColliderId PhysicsWorld::addMesh(std::span<const Triangle3> mesh, const MeshTransform& transform,
                                  CollisionFilter filter) {
     state_->check();
-    if (mesh.empty() || mesh.size() > maximumTriangles || !transform.valid() ||
+    if (mesh.empty() || mesh.size() > physicsLimits::triangles || !transform.valid() ||
         !coordinate(transform.position))
         throw std::invalid_argument("Invalid mesh collider");
     JPH::TriangleList triangles;
@@ -180,7 +185,12 @@ ColliderId PhysicsWorld::addMesh(std::span<const Triangle3> mesh, const MeshTran
         const auto a = transform.rotation.inverse().apply(transform.vector(triangle.v[0].p)),
                    b = transform.rotation.inverse().apply(transform.vector(triangle.v[1].p)),
                    c = transform.rotation.inverse().apply(transform.vector(triangle.v[2].p));
-        if (!finite3(a) || !finite3(b) || !finite3(c) || length(cross(b - a, c - a)) == 0)
+        if (!coordinate(a) || !coordinate(b) || !coordinate(c) ||
+            !coordinate(transform.point(triangle.v[0].p)) ||
+            !coordinate(transform.point(triangle.v[1].p)) ||
+            !coordinate(transform.point(triangle.v[2].p)) ||
+            length(cross(b - a, c - a)) ==
+                0) // numbers: validate the three stored triangle vertices.
             throw std::invalid_argument("Degenerate collider triangle");
         triangles.emplace_back(j(a), j(b), j(c));
     }

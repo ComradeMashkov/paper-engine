@@ -1,10 +1,12 @@
-# Qt scene editor — 2026-09-25
+# Qt scene editor — 2026-10-01
 
 The editor now supports a complete existing-scene editing cycle. macOS Qt 6.9.0
 integration tests have executed native rendering, dock visibility, window resize,
 create/edit/duplicate/delete/reparent, undo/redo across Save, resource placement
-and reopening saved projects on temporary copies. Resource browser filters and
-isolated Play/Stop/close have also passed with a test-only child process. This is an early authoring tool,
+and reopening saved projects on temporary copies. Free transforms and collider
+Inspector editing passed on DCMO 3, including an ASan/UBSan run. Resource browser
+filters and isolated Play/Stop/close also passed with a test-only child process.
+This is an early authoring tool,
 not a completed Unity/Unreal equivalent. Human visual/usability acceptance, other
 platforms and recovery remain outstanding.
 
@@ -12,7 +14,8 @@ platforms and recovery remain outstanding.
 
 - Left: scene selector, searchable hierarchy with readable labels and stable IDs.
 - Right: label/localization key, parent, resource, local XYZ in metres, yaw in degrees,
-  uniform scale, shadow flag and reset of transform overrides to the template.
+  uniform scale for v2; quaternion XYZW and scale XYZ for explicitly migrated v3
+  scenes. Collision shape/category/mask, shadow flag and template reset are available.
 - The editor interface defaults to English; project labels/localized game content are
   displayed as authored. Editor translations can be added later.
 - Bottom: Project browser with actual asset folders, category groups/filter, search
@@ -29,9 +32,10 @@ platforms and recovery remain outstanding.
   Engine validation cannot discover arbitrary references from host scripts.
 - View menu: Frame Selected, refresh, panel toggles and Restore Panel Layout.
   Layout/settings are local QSettings state. `PAPER_EDITOR_SETTINGS_DIR` isolates QA.
-- Q/W/E/R in the focused viewport select selection/move/yaw/scale tools. Left-click
+- Q/W/E/R in the focused viewport select selection/move/rotation/scale tools. Left-click
   picks a mesh; a selected object has a bounds outline. Drag colored world axes to
-  move, the screen ring horizontally to rotate around Y, or the diagonal handle to
+  move, the screen ring horizontally to rotate around the selected world X/Y/Z axis
+  (Y only in v2), or the diagonal handle to
   scale uniformly. One drag is one undo command; Escape or lost focus cancels it.
 - Snap uses 0.5 metres, 15 degrees or 0.1 relative scale. Optional X-ray grid shows
   the world ground plane. Overlays are drawn after the scene and do not depth-test.
@@ -55,8 +59,9 @@ raw authored values, not flattened runtime transforms. Commands capture authored
 node snapshots and selection, with a 128-command project history. Undo returns to
 the affected scene. Dirty compares against the latest saved snapshot. Template
 inheritance and explicit `remove` lists survive editing; technical IDs are stable.
-Reparent preserves world position/yaw/scale and uses runtime cycle/static-parent
-validation. Gizmo preview updates instance transforms in memory, including children;
+Reparent preserves the exact affine world transform, including shear in v3, and
+uses runtime cycle/static-parent validation. Gizmo preview updates instance
+transforms in memory, including children;
 only release commits to the document. Invalid changes leave it unchanged.
 
 `loadScenes` validates candidate documents before commands are accepted and before
@@ -68,8 +73,10 @@ remains visible during validation; gizmo editing waits for the matching package.
 
 The host supplies its thread-safe procedural material factory through `Options`;
 the standalone editor uses neutral materials. No game session, scripts, story
-visibility or audio runs in Scene view. Yaw and uniform scale reflect
-the current runtime schema; full XYZ rotation/nonuniform scale are not offered.
+visibility or audio runs in Scene view. DCMO 2 retains yaw/uniform scale controls;
+DCMO 3 supports free rotation and axis scale. File → Edit Audio Bank provides
+validated source editing and atomic Save; it does not audition sounds. See
+[transforms](TRANSFORMS.md), [physics](PHYSICS.md) and [audio](AUDIO.md).
 
 ## Play / Stop and host contract
 
@@ -116,7 +123,8 @@ the current runtime schema; full XYZ rotation/nonuniform scale are not offered.
   Unsupported/ambiguous layouts fail without touching disk. Inline tables allow
   existing-value replacement, but not field/structural insertion or deletion.
 - Unknown versions are rejected; opening does not migrate data. Current native
-  formats stay TOML/DCMO 2; glTF/GLB is the external model-format exception.
+  formats stay TOML/DCMO 2 or explicitly migrated DCMO 3; glTF/GLB is the external
+  model-format exception.
 - Descriptor, scenes, templates, manifests and localization source bytes are
   checked against their opening/saved snapshots. External changes block writing.
 - QLockFile prevents cooperating editor instances. QSaveFile atomically replaces

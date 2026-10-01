@@ -279,9 +279,9 @@ class Window final : public QMainWindow {
             editProperty("resource", resource_->currentData().toString().toStdString());
         });
         const std::array<QString, 12> labels{
-            tr("X, m"),          tr("Y, m"),       tr("Z, m"),       tr("Y rotation, °"),
-            tr("Uniform scale"), tr("Rotation X"), tr("Rotation Y"), tr("Rotation Z"),
-            tr("Rotation W"),    tr("Scale X"),    tr("Scale Y"),    tr("Scale Z")};
+            tr("X, m"),          tr("Y, m"),         tr("Z, m"),         tr("Y rotation, °"),
+            tr("Uniform scale"), tr("Quaternion X"), tr("Quaternion Y"), tr("Quaternion Z"),
+            tr("Quaternion W"),  tr("Scale X"),      tr("Scale Y"),      tr("Scale Z")};
         for (size_t i = 0; i < fields_.size(); ++i) {
             auto* spin = fields_[i] = new QDoubleSpinBox;
             spin->setObjectName(QString("transform%1").arg(i));
@@ -296,6 +296,11 @@ class Window final : public QMainWindow {
                 spin->setRange(sceneLimits::scaleMinimum, sceneLimits::scaleMaximum);
             constexpr double positionStepMeters = .1, rotationStepDegrees = 1;
             spin->setSingleStep(i == yawField ? rotationStepDegrees : positionStepMeters);
+            if (i >= quaternionField && i < axisScaleField) {
+                constexpr double componentStep = .01;
+                spin->setRange(-1, 1);
+                spin->setSingleStep(componentStep);
+            }
             spin->setAccessibleName(labels[i]);
             form->addRow(labels[i], spin);
             connect(spin, &QDoubleSpinBox::editingFinished, this, [this, i] { change(i); });
@@ -321,7 +326,12 @@ class Window final : public QMainWindow {
         form->addRow(tr("Collider shape"), collisionShape_);
         form->addRow(tr("Category bits"), collisionCategory_);
         form->addRow(tr("Mask bits"), collisionMask_);
-        connect(collision_, &QCheckBox::clicked, this, [this] { editCollision(); });
+        connect(collision_, &QCheckBox::clicked, this, [this](bool checked) {
+            if (checked)
+                editCollision();
+            else
+                editProperty("collision", false);
+        });
         connect(collisionShape_, &QComboBox::activated, this, [this] { editCollision(); });
         for (auto* field : {collisionCategory_, collisionMask_})
             connect(field, &QLineEdit::editingFinished, this, [this] { editCollision(); });
@@ -940,10 +950,8 @@ class Window final : public QMainWindow {
     void editCollision() {
         if (updating_ || !current_ || selected_.empty())
             return;
-        if (!collision_->isChecked()) {
-            editProperty("collision", false);
+        if (!collision_->isChecked())
             return;
-        }
         if (current_->data().at("version") == content::limits::legacySceneVersion) {
             editProperty("collision", true);
             return;
@@ -1137,7 +1145,8 @@ class Window final : public QMainWindow {
                     world.rotation = Rotation3::axisAngle(delta, amount) * world.rotation;
                     t = relativeTransform(p, world);
                     clearEffective(candidate, "yaw");
-                    for (const auto& [key, value] : writeTransform(t).items())
+                    const auto fields = writeTransform(t);
+                    for (const auto& [key, value] : fields.items())
                         candidate.setProperty(selected_, key, value);
                 } else
                     candidate.setProperty(selected_, "scale",

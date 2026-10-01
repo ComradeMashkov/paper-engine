@@ -35,8 +35,8 @@ struct SceneNode {
     Vec3 openOffset;
     bool collidable = false, acoustic = false, shadow = true;
     bool freeTransform = false;
-    std::uint32_t collisionCategory=1,collisionMask=~std::uint32_t{0};
-    bool meshCollision=false;
+    std::uint32_t collisionCategory = 1, collisionMask = ~std::uint32_t{0};
+    bool meshCollision = false;
     std::shared_ptr<const SceneAsset> asset, activeAsset, inspection;
     std::vector<std::shared_ptr<const SceneAsset>> poses;
     std::optional<Light> light;

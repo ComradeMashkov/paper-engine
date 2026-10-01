@@ -3,6 +3,9 @@
 #include <memory>
 #include <optional>
 namespace paper {
+namespace physicsLimits {
+inline constexpr size_t triangles = 50000;
+}
 using ColliderId = std::uint32_t;
 struct CollisionFilter {
     std::uint32_t category = 1, mask = ~std::uint32_t{0};

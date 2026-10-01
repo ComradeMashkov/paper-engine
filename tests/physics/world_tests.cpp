@@ -1,5 +1,7 @@
 #include "paper/content/document.hpp"
 #include "paper/physics/scene.hpp"
+#include <chrono>
+#include <fstream>
 #include <iostream>
 #include <thread>
 using namespace paper;
@@ -207,6 +209,50 @@ int main() {
                                    {{"boxes.dcscene", document}});
               }),
               "v2 structured collisions require explicit migration");
+    }
+    {
+        const auto copy =
+            std::filesystem::temp_directory_path() /
+            ("paper-template-" +
+             std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        struct Cleanup {
+            std::filesystem::path path;
+            ~Cleanup() {
+                std::error_code error;
+                std::filesystem::remove_all(path, error);
+            }
+        } cleanup{copy};
+        std::filesystem::copy(PAPER_EXAMPLE_ASSETS, copy, std::filesystem::copy_options::recursive);
+        auto manifest = content::read(copy / "world.dcworld");
+        manifest["version"] = 3;
+        manifest["world"]["templates"] = ContentValue::array({"box.dctemplates"});
+        auto scene = content::read(copy / "boxes.dcscene");
+        scene["version"] = 3;
+        scene["scene"]["nodes"][0]["template"] = "free.box";
+        const auto templates = ContentValue{
+            {"format", "dcmo.templates"},
+            {"version", 3},
+            {"templates",
+             ContentValue{
+                 {"templates", ContentValue::array({ContentValue{
+                                   {"id", "free.box"},
+                                   {"rotation", ContentValue::array({0, .70710678, 0, .70710678})},
+                                   {"scale", ContentValue::array({2, 1, 1})}}})}}}};
+        std::ofstream(copy / "box.dctemplates") << content::encode(templates);
+        PaintedTexture material;
+        material.width = material.height = 1;
+        material.pixels.push_back({});
+        const std::array<std::string_view, 1> names{"neutral"};
+        const auto package = loadScenes(copy, {material}, names, "world.dcworld",
+                                        {{"world.dcworld", manifest}, {"boxes.dcscene", scene}});
+        const auto& box = *std::ranges::find(package->nodes, "box.parent", &SceneNode::id);
+        check(length(box.transform.vector({1, 0, 0}) - Vec3{0, 0, -2}) < .0001f,
+              "v3 templates retain quaternion and axis-scale inheritance");
+    }
+    {
+        PhysicsWorld w;
+        check(rejects([&] { w.addBox({{}, {1e30f, 1, 1}}); }),
+              "overflowing collider geometry rejected before dependency calls");
     }
     std::cout << "physics failures=" << failures << '\n';
     return failures ? 1 : 0;

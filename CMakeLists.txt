@@ -90,6 +90,7 @@ if(PAPER_BUILD_TESTS)
             "ui_input;ui/input_tests.cpp;Paper::UIRender"
             "document;content/document_tests.cpp;Paper::Content"
             "authoring;authoring/document_tests.cpp;Paper::Authoring"
+            "collision_authoring;authoring/collision_tests.cpp;Paper::Authoring"
             "diagnostics;engine_debug_tests.cpp;Paper::Diagnostics"
             "utf8;core/utf8_tests.cpp;Paper::Core"
             "render_data;render/render_data_tests.cpp;Paper::Render"
