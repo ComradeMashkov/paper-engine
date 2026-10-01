@@ -10,6 +10,7 @@ struct InputSample {
     float dx = 0, dy = 0;
     bool click = false, released = false, heldClick = false, focusLost = false, focusGained = false,
          windowModeChanged = false, canvasChanged = false, debugCaptured = false;
+    float wheelY = 0; // Ordered SDL wheel units; positive means scrolling up.
     // Widgets can opt into key repeat without repeating discrete game actions.
     SDL_Keycode key = 0, repeatedKey = 0, releasedKey = 0;
     SDL_Scancode scancode = SDL_SCANCODE_UNKNOWN;
@@ -32,7 +33,7 @@ struct Input : InputSample {
     void recordEvent() {
         auto sample = static_cast<const InputSample&>(*this);
         events.push_back(sample);
-        dx = dy = 0;
+        dx = dy = wheelY = 0;
         key = repeatedKey = releasedKey = 0;
         scancode = SDL_SCANCODE_UNKNOWN;
         click = released = false;

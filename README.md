@@ -9,7 +9,10 @@ The editor provides hierarchy, inspector, resource placement, create/delete/dupl
 reparent, world transform gizmos, camera controls, undo/redo and guarded TOML saving.
 Native Qt/GPU integration and editing/saving/reopening were tested on temporary
 macOS project copies. The Project browser has folders, category/search filters and
-a floating window.
+a floating window. The editor exposes collider bounds/layers and overlays, free
+rotation in degrees, structured audio banks with audition, and visual UI asset
+design with an interactive layout preview. The Boxes project includes
+`settings.pui` and `example.pabank`; double-click them in the Project browser.
 Host-configured Play/Stop uses isolated snapshots and temporary saves. Its process
 lifecycle is tested with a fixture; real-game Play acceptance, human usability,
 recovery and import UI are still outstanding. No game logic runs in Scene view. See [the editor contract](docs/EDITOR.md).
@@ -17,7 +20,7 @@ recovery and import UI are still outstanding. No game logic runs in Scene view. 
 ## Build
 
 Requires CMake 3.24+, a C++20 compiler and the native platform SDK. SDL 3.4.12,
-toml++ 3.4.0, cgltf 1.15 and stb are pinned in `vendor`. Windows/Linux additionally
+Jolt Physics 5.6.0, toml++ 3.4.0, cgltf 1.15 and stb are pinned in `vendor`. Windows/Linux additionally
 require DXC (`dxc` in PATH or `PAPER_DXC`). Editor builds require Qt 6.9+ Widgets
 and Concurrent; Qt 6.9.0/macOS builds and isolated editor integration tests have passed.
 
@@ -44,18 +47,22 @@ target_link_libraries(my_game PRIVATE Paper::Runtime Paper::Resources)
 ```
 
 Targets: `Paper::Core`, `Content`, `Render`, `Resources`, `GPU`, `Audio`,
-`Diagnostics`, `Runtime`, `Authoring`; `Editor` exists when explicitly enabled.
-`Authoring` uses only content/types and toml++, without Qt/SDL. The public API is
+`Physics`, `UI`, `UIRender`, `Diagnostics`, `Runtime`, `Authoring`; `Editor` exists when explicitly enabled.
+`Authoring` uses content/resources and toml++, without Qt/SDL devices. The public API is
 source-based and pre-1.0; no stable binary ABI is promised. `VERSION` identifies
 the engine independently of the game's version.
 
 The DCMO 2 TOML envelope and `.dcworld/.dcscene/.dcresources/.dctemplates` extensions
-remain wire-compatible. Their historical names are file-format identifiers, not
+remain readable/editable. DCMO 3 adds free rotation and axis scale through explicit
+migration; see [transforms](docs/TRANSFORMS.md). Their historical names are file-format identifiers, not
 C++ namespaces. `SceneNode` still carries existing authoring fields such as
 `legacyDoor`, `actions` and `itemInstance`; rules interpreting them stay in the
 host. A generic extension/component schema is future work, not an invisible data
 migration. glTF/GLB remains an external model import standard. There is no native
 JSON reader or legacy scene-import fallback.
+
+Shared engine systems: [movement and collisions](docs/PHYSICS.md),
+[audio banks and acoustic zones](docs/AUDIO.md), [UI and layout](docs/UI.md).
 
 [Provenance and third-party notices](THIRD_PARTY.md),
 [contribution rules](CONTRIBUTING.md), [version history](CHANGELOG.md).

@@ -38,17 +38,21 @@ add_library(paper_render STATIC src/render/scene.cpp src/render/mesh.cpp src/ren
 paper_target(paper_render)
 add_library(Paper::Render ALIAS paper_render)
 add_library(paper_resources STATIC src/resources/resource_store.cpp src/resources/model.cpp
-    src/resources/gltf.cpp src/scenes/scene.cpp)
+    src/resources/gltf.cpp src/scenes/scene.cpp src/scenes/transforms.cpp)
 paper_target(paper_resources)
 target_link_libraries(paper_resources PUBLIC Paper::Render PRIVATE paper_stb paper_cgltf Paper::Content)
 add_library(Paper::Resources ALIAS paper_resources)
+add_library(paper_physics STATIC src/physics/world.cpp src/physics/scene.cpp)
+paper_target(paper_physics)
+target_link_libraries(paper_physics PUBLIC Paper::Resources PRIVATE Jolt)
+add_library(Paper::Physics ALIAS paper_physics)
 add_library(paper_gpu STATIC src/render/gpu_renderer.cpp)
 paper_target(paper_gpu)
 target_link_libraries(paper_gpu PUBLIC Paper::Render SDL3::SDL3-static)
 add_library(Paper::GPU ALIAS paper_gpu)
-add_library(paper_audio STATIC src/audio/mixer.cpp src/audio/audio.cpp)
+add_library(paper_audio STATIC src/audio/mixer.cpp src/audio/audio.cpp src/audio/bank.cpp)
 paper_target(paper_audio)
-target_link_libraries(paper_audio PUBLIC Paper::Core SDL3::SDL3-static)
+target_link_libraries(paper_audio PUBLIC Paper::Core Paper::Content Paper::Resources SDL3::SDL3-static)
 add_library(Paper::Audio ALIAS paper_audio)
 find_package(Threads REQUIRED)
 add_library(paper_diagnostics STATIC src/debug/diagnostics.cpp)
@@ -62,15 +66,32 @@ target_link_libraries(paper_runtime PUBLIC Paper::Diagnostics Paper::GPU Paper::
 add_library(Paper::Runtime ALIAS paper_runtime)
 add_library(paper_authoring STATIC src/authoring/document.cpp)
 paper_target(paper_authoring)
-target_link_libraries(paper_authoring PUBLIC Paper::Content PRIVATE paper_toml)
+target_link_libraries(paper_authoring PUBLIC Paper::Content Paper::Resources PRIVATE paper_toml)
 add_library(Paper::Authoring ALIAS paper_authoring)
+add_library(paper_ui STATIC src/ui/ui.cpp src/ui/document.cpp)
+paper_target(paper_ui)
+target_link_libraries(paper_ui PUBLIC Paper::Content)
+add_library(Paper::UI ALIAS paper_ui)
+add_library(paper_ui_render STATIC src/ui/paint.cpp)
+paper_target(paper_ui_render)
+target_link_libraries(paper_ui_render PUBLIC Paper::UI Paper::Runtime)
+add_library(Paper::UIRender ALIAS paper_ui_render)
+if(PAPER_BUILD_TESTS)
+    enable_testing()
+endif()
 if(PAPER_BUILD_EDITOR)
     add_subdirectory(editor)
 endif()
 if(PAPER_BUILD_TESTS)
     enable_testing()
-    foreach(pair IN ITEMS "document;content/document_tests.cpp;Paper::Content"
+    foreach(pair IN ITEMS "transforms;scenes/transform_tests.cpp;Paper::Authoring"
+            "physics;physics/world_tests.cpp;Paper::Physics"
+            "audio_bank;audio/bank_tests.cpp;Paper::Audio"
+            "ui;ui/ui_tests.cpp;Paper::UI"
+            "ui_input;ui/input_tests.cpp;Paper::UIRender"
+            "document;content/document_tests.cpp;Paper::Content"
             "authoring;authoring/document_tests.cpp;Paper::Authoring"
+            "collision_authoring;authoring/collision_tests.cpp;Paper::Authoring"
             "diagnostics;engine_debug_tests.cpp;Paper::Diagnostics"
             "utf8;core/utf8_tests.cpp;Paper::Core"
             "render_data;render/render_data_tests.cpp;Paper::Render"
@@ -85,6 +106,7 @@ if(PAPER_BUILD_TESTS)
         target_link_libraries(paper_${name}_tests PRIVATE ${dependency})
         add_test(NAME paper_${name} COMMAND paper_${name}_tests)
     endforeach()
+    target_compile_definitions(paper_physics_tests PRIVATE PAPER_EXAMPLE_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/examples/boxes/assets")
     target_link_libraries(paper_authoring_tests PRIVATE Paper::Resources)
     target_compile_definitions(paper_authoring_tests PRIVATE PAPER_EXAMPLE_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/examples/boxes/assets")
     target_include_directories(paper_resources_tests SYSTEM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/vendor")

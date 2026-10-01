@@ -81,7 +81,9 @@ void quad(Mesh3& m, Vec3 a, Vec3 b, Vec3 c, Vec3 d, MaterialId mat, float u, flo
 void boxMesh(Mesh3& m, const Box3& b, MaterialId mat, float scale) {
     const auto firstTriangle = m.size();
     Vec3 h = b.half;
-    const auto p = [&](float x, float y, float z) { return b.center + rotateY({x, y, z}, b.yaw); };
+    const auto p = [&](float x, float y, float z) {
+        return b.center + b.orientation().apply({x, y, z});
+    };
     float u = std::max(minimumBoxUvExtent, h.x * 2 * scale),
           v = std::max(minimumBoxUvExtent, h.y * 2 * scale),
           w = std::max(minimumBoxUvExtent, h.z * 2 * scale);

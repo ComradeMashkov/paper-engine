@@ -3,8 +3,17 @@
 
 namespace paper {
 MeshTransform compose(const MeshTransform& parent, const MeshTransform& child) {
-    return {parent.point(child.position), (parent.rotation * child.rotation).unit(),
-            parent.scale * child.scale};
+    if (!parent.valid() || !child.valid())
+        throw std::invalid_argument("Invalid composed transform");
+    MeshTransform result{parent.point(child.position), (parent.rotation * child.rotation).unit(),
+                         parent.scale * child.scale};
+    const auto exact = parent.linear() * child.linear();
+    const auto inverse = result.rotation.inverse();
+    result.basis = {inverse.apply(exact.x) / result.scale, inverse.apply(exact.y) / result.scale,
+                    inverse.apply(exact.z) / result.scale};
+    if (!result.valid())
+        throw std::invalid_argument("Composed transform overflow");
+    return result;
 }
 namespace {
 Rotation3 interpolate(Rotation3 a, Rotation3 b, float t) {
@@ -27,9 +36,19 @@ Rotation3 interpolate(Rotation3 a, Rotation3 b, float t) {
 }
 } // namespace
 MeshTransform blend(const MeshTransform& from, const MeshTransform& to, float amount) {
+    if (!from.valid() || !to.valid() || !std::isfinite(amount))
+        throw std::invalid_argument("Invalid blended transform");
     const auto t = std::clamp(amount, 0.f, 1.f);
-    return {from.position * (1 - t) + to.position * t, interpolate(from.rotation, to.rotation, t),
-            from.scale * (1 - t) + to.scale * t};
+    MeshTransform result{from.position * (1 - t) + to.position * t,
+                         interpolate(from.rotation, to.rotation, t),
+                         from.scale * (1 - t) + to.scale * t,
+                         from.scaleAxes * (1 - t) + to.scaleAxes * t,
+                         {from.basis.x * (1 - t) + to.basis.x * t,
+                          from.basis.y * (1 - t) + to.basis.y * t,
+                          from.basis.z * (1 - t) + to.basis.z * t}};
+    if (!result.valid())
+        throw std::invalid_argument("Degenerate blended transform");
+    return result;
 }
 std::vector<MeshTransform>
 ModelResource::transforms(float seconds, int animation, bool loop,

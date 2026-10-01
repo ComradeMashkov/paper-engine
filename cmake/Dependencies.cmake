@@ -32,3 +32,27 @@ set_target_properties(paper_toml PROPERTIES CXX_EXTENSIONS OFF)
 add_library(paper_cgltf STATIC "${PROJECT_SOURCE_DIR}/src/third_party/cgltf.cpp")
 target_include_directories(paper_cgltf SYSTEM PUBLIC "${PROJECT_SOURCE_DIR}/vendor")
 target_compile_features(paper_cgltf PRIVATE cxx_std_20)
+
+# Pinned Jolt Physics 5.6.0 (MIT). Baseline CPU ISA, no upstream applications or LTO.
+# UBSan vptr instrumentation needs RTTI in both the adapter and the dependency.
+set(CPP_RTTI_ENABLED ${PAPER_ENABLE_SANITIZERS} CACHE BOOL "" FORCE)
+set(OVERRIDE_CXX_FLAGS OFF CACHE BOOL "" FORCE)
+set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
+set(ENABLE_ALL_WARNINGS OFF CACHE BOOL "" FORCE)
+set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(DEBUG_RENDERER_IN_DEBUG_AND_RELEASE OFF CACHE BOOL "" FORCE)
+set(PROFILER_IN_DEBUG_AND_RELEASE OFF CACHE BOOL "" FORCE)
+set(JPH_USE_DX12 OFF CACHE BOOL "" FORCE)
+set(JPH_USE_VK OFF CACHE BOOL "" FORCE)
+set(JPH_USE_MTL OFF CACHE BOOL "" FORCE)
+set(JPH_USE_CPU_COMPUTE OFF CACHE BOOL "" FORCE)
+foreach(feature SSE4_1 SSE4_2 AVX AVX2 AVX512 LZCNT TZCNT F16C FMADD)
+    set(USE_${feature} OFF CACHE BOOL "" FORCE)
+endforeach()
+FetchContent_Declare(paper_jolt URL "${PROJECT_SOURCE_DIR}/vendor/JoltPhysics-5.6.0.tar.gz"
+    URL_HASH SHA256=6e069ee0172478cc78182047aac87e5310ba14a67a53348ae14cc37801fd3f8e
+    SOURCE_SUBDIR Build DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(paper_jolt)
+if(PAPER_ENABLE_SANITIZERS)
+    target_compile_options(Jolt PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+endif()

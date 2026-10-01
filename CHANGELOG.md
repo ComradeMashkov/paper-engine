@@ -1,5 +1,96 @@
 # Changelog
 
+## [0.9.0-alpha.1+build.11] - 2026-10-01
+
+- Expose collider bounds editing, initial fitting, category/mask authoring and
+  scene overlays; show exact triangles for the selected mesh collider.
+- Add local X/Y/Z rotation in degrees alongside quaternion/axis-scale controls.
+  Upgrade project copies to DCMO 3 in the editor, including unsaved scenes,
+  template removals and full project validation before publishing the copy.
+- Add structured audio sound/source/zone forms, scene-node choices, WAV selection,
+  explicit audition/Stop and source/range/oriented-zone overlays in Scene view.
+- Add versioned `.pui` assets and visual UI authoring: component hierarchy,
+  properties, reparent/reorder/duplicate/delete, theme/viewport and isolated
+  interactive preview using the shared layout, drawing and input system.
+- Preserve no-op/source edits; publish structured edits as single Undo steps,
+  retain exact untouched values and guard atomic saves against external changes.
+  Keep component windows nonmodal and add browser/menu actions and Boxes examples.
+- Include validated unsaved UI/audio drafts in isolated Play snapshots without
+  saving originals; validate source bindings against the current scene documents.
+- Verification on macOS: all 16 CTest cases passed in Release and ASan/UBSan,
+  including Metal. Native Boxes v2/v3 and an upgraded host project copy passed;
+  native v3 also passed under ASan/UBSan. Isolated Play lifecycle checks passed.
+  UI/audio test-window captures were visually inspected. Host game/editor builds
+  passed; the game was not launched.
+
+## [0.8.1-alpha.1+build.10] - 2026-10-01
+
+- Fix collider source serialization and preserve nested-table comments, disable,
+  Undo and Save semantics. Retain pending collider shape choices in the Inspector.
+- Fix a temporary-lifetime error during world-axis rotation, preserve editable
+  axis-scale magnitudes and validate free transforms inherited from v3 templates.
+- Reject overflowing collider coordinates and triangle budgets before Jolt calls;
+  validate authored audio loops and zone ambience against their shared capacity.
+- Enable dependency RTTI for UBSan builds and add independent affine GPU,
+  v3 Inspector/template, collider authoring and capacity regressions.
+- Verification on macOS: all 15 CTest cases passed in Release and ASan/UBSan,
+  including Metal GPU and offscreen audio-bank editing. Native v2/v3 workspace
+  and isolated Play lifecycle tests passed; the v3 workspace also passed under
+  ASan/UBSan. Engine/editor and host application targets compiled. The real game
+  was not launched; other platforms and human visual acceptance remain unverified.
+
+## [0.8.0-alpha.1+build.9] - 2026-10-01
+
+- Add shared panels, labels, buttons, toggles, sliders, lists and tooltips with a
+  host-measured, device-independent row/column layout system.
+- Add constrained grow/shrink allocation, alignment, padding, wrapping, nested
+  clipping, scrolling, focus navigation, pointer capture and bounded tree validation.
+- Publish tree/layout changes transactionally; retain the previous valid state
+  on failure. Render only visible list rows and preserve host clipping.
+- Add Engine drawing/input adapters with ordered wheel/motion/key edges while
+  retaining aggregate relative camera motion. Host menu adoption stays explicit.
+- Verification: Release UI/runtime/editor compiled; layout, wrap, constraints,
+  capture, focus, keyboard/list/slider, disabled/hidden states, rollback and
+  ordered host-input adapter regressions passed. See docs/UI.md for usage.
+
+## [0.7.0-alpha.1+build.8] - 2026-10-01
+
+- Add editable TOML audio banks, validated source instances and oriented acoustic
+  zones with priority, boundary fade, ambience and stable reverb profiles.
+- Resolve source offsets through full scene transforms and submit bounded loop/scene
+  snapshots under one stream lock; keep allocation and I/O outside the PCM callback.
+- Validate all declared WAV variants and PCM budgets before replacing live audio.
+  Add optional runtime bank configuration and a source-preserving bank editor with
+  strict validation, Undo/Redo, atomic Save and external-change protection.
+- Verification: Release audio/runtime/editor compiled; bank/source/zone, loop-capacity,
+  strict WAV/dummy-device replacement, echo-decay and offscreen editor-save tests passed.
+- Limits: banks reload explicitly; no editor audition or automatic live reload.
+
+## [0.6.0-alpha.1+build.7] - 2026-10-01
+
+- Add a pinned Jolt-backed collision world and swept character capsules with stairs,
+  slope limits, gravity, jump, floor snap, crouching and stand-up clearance.
+- Add symmetric 32-bit collision layers, stable handles and bounded owner-thread APIs.
+- Bind exact box/static mesh geometry from DCMO 3 scenes transactionally; expose
+  shape/category/mask in the editor through its validated Undo pipeline.
+- Verification: Release engine/editor targets compiled; physics regressions passed
+  for stairs, slopes, jump, ceilings, sliding, thin-wall sweep, layers, invalid
+  settings, capacity and scene-loader rollback. Existing authoring tests passed.
+- Limits: static terrain and virtual characters; no rigid-body dynamics or
+  collisions between virtual characters. See docs/PHYSICS.md for API bounds.
+
+## [0.5.0-alpha.1+build.6] - 2026-10-01
+
+- Add DCMO 3 quaternion rotation, axis scale and exact affine hierarchy transforms.
+  Keep DCMO 2 readable/editable and provide an explicit migration on a new copy.
+- Share full transforms between scene placement, picking, bounds, normals, rendering
+  and shadows; add editor quaternion/axis controls and world-axis rotation.
+- Preserve shear through reparenting; reject singular or invalid transforms.
+- Compatibility: rebuild shaders with the changed model-uniform ABI. glTF import
+  retains its existing subset. Migration is explicit and leaves originals intact.
+- Verification: Release libraries/editor compiled; transform, authoring and resource
+  tests passed; Metal GPU shader tests passed; migration copy/diff guards checked.
+
 ## [0.4.0-alpha.1+build.5] - 2026-09-25
 
 - Add host-configured Play/Stop, scene start-point selection and a bounded Console.

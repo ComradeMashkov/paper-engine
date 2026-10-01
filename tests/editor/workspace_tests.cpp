@@ -1,10 +1,17 @@
+#include "../../editor/audio_bank_editor.hpp"
 #include "../../editor/play_controller.hpp"
+#include "../../editor/project_migration.hpp"
+#include "../../editor/resource_browser.hpp"
+#include "../../editor/ui_editor.hpp"
 #include "../../editor/viewport.hpp"
 #include "../../editor/workspace.hpp"
 #include "paper/content/document.hpp"
+#include "paper/scenes/transforms.hpp"
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
+#include <QDialog>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
 #include <QElapsedTimer>
@@ -15,6 +22,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QTreeWidget>
 #include <iostream>
 
@@ -38,8 +46,10 @@ template <class F> void waitFor(F condition) {
 } // namespace
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
+    const char* stage = "initialization";
     try {
-        check(argc == 2, "Pass an isolated Paper project path");
+        check(argc == 2 || (argc == 3 && std::string_view(argv[2]) == "--upgrade"),
+              "Pass an isolated Paper project path and optional --upgrade");
         QTemporaryDir temporary;
         check(temporary.isValid(), "Cannot allocate test workspace");
         const auto destination = std::filesystem::path(temporary.path().toStdString()) / "project";
@@ -54,10 +64,15 @@ int main(int argc, char** argv) {
         QCoreApplication::setApplicationName("Workspace");
         paper::editor::Options options;
         options.project = destination / supplied.filename();
+        if (argc == 3)
+            options.project = paper::editor::migrateProject(
+                options.project,
+                std::filesystem::path(temporary.path().toStdString()) / "upgraded");
         options.shaders = PAPER_TEST_SHADER_DIR;
         options.playExecutable = PAPER_PLAY_FIXTURE;
         const auto projectSpec = paper::content::read(options.project);
-        const auto assetsRoot = destination / projectSpec.at("assets").get<std::string>();
+        const auto assetsRoot =
+            options.project.parent_path() / projectSpec.at("assets").get<std::string>();
         std::filesystem::create_directories(assetsRoot / "browser-fixture" / "empty");
         auto window = paper::editor::makeWorkspace(options);
         window->show();
@@ -83,7 +98,10 @@ int main(int argc, char** argv) {
         };
         const auto action = [&](const char* name) {
             auto* item = child<QAction>(*window, name);
-            check(item->isEnabled(), "Expected enabled action");
+            if (!item->isEnabled())
+                throw std::runtime_error(
+                    std::string("Expected enabled action: ") + name +
+                    (problems->count() ? "; " + problems->item(0)->text().toStdString() : ""));
             item->trigger();
         };
         const auto save = [&] {
@@ -112,6 +130,39 @@ int main(int argc, char** argv) {
         check(node(persisted, id).at("label") == "Edited group" &&
                   node(persisted, id).at("position").at(0) == 7.25,
               "Inspector edits must persist");
+        stage = "free transforms";
+        if (persisted.at("version") == 3) {
+            auto* quaternion = child<QDoubleSpinBox>(*window, "transform5");
+            auto* axisScale = child<QDoubleSpinBox>(*window, "transform9");
+            check(quaternion->isEnabled() && axisScale->isEnabled(),
+                  "v3 transform controls must be available");
+            quaternion->setValue(.3);
+            QMetaObject::invokeMethod(quaternion, "editingFinished", Qt::DirectConnection);
+            axisScale->setValue(2);
+            QMetaObject::invokeMethod(axisScale, "editingFinished", Qt::DirectConnection);
+            persisted = save();
+            check(node(persisted, id).at("rotation").size() == 4 &&
+                      node(persisted, id).at("scale").at(0).get<double>() == 2,
+                  "free rotation and axis scale persist through the Inspector");
+            for (const auto& [name, value] : {std::pair{"rotationDegrees0", 30.0},
+                                              {"rotationDegrees1", 45.0},
+                                              {"rotationDegrees2", 0.0}})
+                child<QDoubleSpinBox>(*window, name)->setValue(value);
+            QMetaObject::invokeMethod(child<QDoubleSpinBox>(*window, "rotationDegrees0"),
+                                      "editingFinished", Qt::DirectConnection);
+            persisted = save();
+            const auto q = paper::readRotation(node(persisted, id).at("rotation"));
+            check(paper::length(q.apply({0, 0, 1}) - paper::Vec3{.61237244f, -.5f, .61237244f}) <
+                      .0001f,
+                  "degree Inspector authors the documented Y-X-Z rotation");
+            viewport->transformed(paper::editor::Viewport::Tool::Rotate, {1, 0, 0}, .25f);
+            persisted = save();
+            check(node(persisted, id).contains("rotation") && !node(persisted, id).contains("yaw"),
+                  "world-X rotation uses full quaternion authoring");
+            check(std::abs(node(persisted, id).at("scale").at(0).get<double>() - 2) < .0001,
+                  "world rotation retains editable axis-scale magnitude");
+        }
+        stage = "structure edits";
         action("duplicateNode");
         check(count() == originalCount + 2, "Duplicate must add a node");
         action("undo");
@@ -127,6 +178,7 @@ int main(int argc, char** argv) {
         save();
         const auto duplicateId =
             tree->currentItem()->data(0, Qt::UserRole).toString().toStdString();
+        stage = "reparenting";
         auto* parent = child<QComboBox>(*window, "nodeParent");
         const auto parentIndex = parent->findData(QString::fromStdString(id));
         parent->setCurrentIndex(parentIndex);
@@ -139,6 +191,7 @@ int main(int argc, char** argv) {
         persisted = save();
         check(!node(persisted, duplicateId).contains("parent"),
               "Detach must remove parent, not write an invalid empty ID");
+        stage = "resource browser";
         auto* resources = child<QTreeWidget>(*window, "resourceLibrary");
         check(resources->topLevelItemCount() > 0, "Expected resource library");
         auto* browser = child<QWidget>(*window, "projectBrowser");
@@ -178,10 +231,90 @@ int main(int argc, char** argv) {
             }
         check(placeable, "Expected a placeable resource, distinct from a source file");
         resources->setCurrentItem(placeable);
+        stage = "resource placement";
         action("createResource");
         check(count() == originalCount + 3, "Resource must create a scene instance");
         const auto resourceId = tree->currentItem()->data(0, Qt::UserRole).toString().toStdString();
         persisted = save();
+        stage = "collider Inspector";
+        std::string boundsError;
+        QTimer::singleShot(0, window.get(), [&] {
+            auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            try {
+                check(dialog, "Expected bounds dialog");
+                child<QDoubleSpinBox>(*dialog, "half.0")->setValue(2.5);
+                child<QPushButton>(*dialog, "applyColliderBounds")->click();
+                if (dialog->isVisible())
+                    throw std::runtime_error("Bounds edit was rejected");
+            } catch (const std::exception& e) {
+                boundsError = e.what();
+                if (dialog)
+                    dialog->reject();
+            }
+        });
+        child<QPushButton>(*window, "editColliderBounds")->click();
+        check(boundsError.empty(), boundsError.c_str());
+        persisted = save();
+        check(node(persisted, resourceId).at("bounds").at("half")[0].get<double>() == 2.5,
+              "collider bounds editor authors local extents");
+        action("showCollisions");
+        const auto overlayFrame = viewport->renderedFrames();
+        waitFor([&] { return viewport->renderedFrames() > overlayFrame; });
+        stage = "component windows";
+        const auto writeAsset = [&](const std::filesystem::path& path, const std::string& content) {
+            QFile file(QString::fromStdString(path.string()));
+            check(file.open(QIODevice::WriteOnly), "Create component fixture");
+            check(file.write(content.data(), static_cast<qint64>(content.size())) ==
+                      static_cast<qint64>(content.size()),
+                  "Write component fixture");
+        };
+        paper::ui::Document uiFixture;
+        uiFixture.root.id = "root";
+        writeAsset(assetsRoot / "browser-fixture/layout.pui", paper::ui::writeDocument(uiFixture));
+        paper::AudioBankDefinition audioFixture;
+        paper::AcousticZone zone;
+        zone.id = "zone";
+        zone.bounds.half = {2, 2, 2};
+        audioFixture.zones.push_back(zone);
+        writeAsset(assetsRoot / "browser-fixture/audio.pabank",
+                   paper::writeAudioBank(audioFixture));
+        auto* resourceBrowser = dynamic_cast<paper::editor::ResourceBrowser*>(
+            child<QWidget>(*window, "projectBrowser"));
+        check(resourceBrowser, "Missing resource browser");
+        resourceBrowser->openAsset("browser-fixture/layout.pui");
+        auto* uiDialog =
+            dynamic_cast<paper::editor::UiEditor*>(child<QDialog>(*window, "uiEditor"));
+        check(uiDialog && uiDialog->isVisible() && !uiDialog->isModal(),
+              "UI design window keeps scene navigation available");
+        uiDialog->close();
+        resourceBrowser->openAsset("browser-fixture/audio.pabank");
+        auto* audioDialog = dynamic_cast<paper::editor::AudioBankEditor*>(
+            child<QDialog>(*window, "audioBankEditor"));
+        check(audioDialog && audioDialog->isVisible() && !audioDialog->isModal(),
+              "audio editor keeps scene navigation available");
+        const auto audioFrame = viewport->renderedFrames();
+        waitFor([&] { return viewport->renderedFrames() > audioFrame; });
+        check(problems->count() == 0, "acoustic overlays render without viewport errors");
+        audioDialog->close();
+        if (persisted.at("version") == 3) {
+            auto* shape = child<QComboBox>(*window, "collisionShape");
+            shape->setCurrentIndex(1);
+            QMetaObject::invokeMethod(shape, "activated", Qt::DirectConnection, Q_ARG(int, 1));
+            auto* collision = child<QCheckBox>(*window, "nodeCollision");
+            collision->setChecked(true);
+            QMetaObject::invokeMethod(collision, "clicked", Qt::DirectConnection,
+                                      Q_ARG(bool, true));
+            auto* category = child<QLineEdit>(*window, "collisionCategory");
+            auto* mask = child<QLineEdit>(*window, "collisionMask");
+            category->setText("4");
+            mask->setText("4");
+            QMetaObject::invokeMethod(category, "editingFinished", Qt::DirectConnection);
+            persisted = save();
+            check(node(persisted, resourceId).at("collision").at("shape") == "mesh" &&
+                      node(persisted, resourceId).at("collision").at("category") == 4,
+                  "collider Inspector saves geometry and layers");
+        }
+        stage = "resource transform";
         const auto oldX = node(persisted, resourceId).at("position").at(0).get<double>();
         viewport->transformed(paper::editor::Viewport::Tool::Move, {1, 0, 0}, 0);
         persisted = save();
@@ -198,6 +331,18 @@ int main(int argc, char** argv) {
         action("createGroup");
         const auto unsavedId = tree->currentItem()->data(0, Qt::UserRole).toString().toStdString();
         const auto diskBeforePlay = paper::content::read(scenePath);
+        resourceBrowser->openAsset("browser-fixture/layout.pui");
+        uiDialog = dynamic_cast<paper::editor::UiEditor*>(child<QDialog>(*window, "uiEditor"));
+        resourceBrowser->openAsset("browser-fixture/audio.pabank");
+        audioDialog = dynamic_cast<paper::editor::AudioBankEditor*>(
+            child<QDialog>(*window, "audioBankEditor"));
+        auto* uiSource = child<QPlainTextEdit>(*uiDialog, "uiSource");
+        auto* audioSource = child<QPlainTextEdit>(*audioDialog, "audioBankSource");
+        const auto originalUi = uiSource->toPlainText();
+        const auto originalAudio = audioSource->toPlainText();
+        uiSource->appendPlainText("# unsaved UI fixture");
+        audioSource->appendPlainText("# unsaved bank fixture");
+        stage = "Play lifecycle";
         action("play");
         check(!child<QAction>(*window, "play")->isEnabled(), "Play must disable duplicate launch");
         waitFor([&] {
@@ -218,10 +363,27 @@ int main(int argc, char** argv) {
         check(paper::content::read(scenePath) == diskBeforePlay &&
                   child<QAction>(*window, "saveScene")->isEnabled(),
               "Play must leave source and dirty state unchanged");
+        const auto readAsset = [&](const std::filesystem::path& path) {
+            QFile file(QString::fromStdString(path.string()));
+            check(file.open(QIODevice::ReadOnly), "Read component snapshot");
+            return QString::fromUtf8(file.readAll());
+        };
+        check(readAsset(snapshot / "assets/browser-fixture/layout.pui")
+                      .contains("# unsaved UI fixture") &&
+                  readAsset(snapshot / "assets/browser-fixture/audio.pabank")
+                      .contains("# unsaved bank fixture"),
+              "Play includes unsaved UI and audio bank edits");
+        check(readAsset(assetsRoot / "browser-fixture/layout.pui") == originalUi &&
+                  readAsset(assetsRoot / "browser-fixture/audio.pabank") == originalAudio,
+              "Component snapshots leave original files unchanged");
         action("stop");
         waitFor([&] { return !play->active(); });
         check(!std::filesystem::exists(snapshot) && child<QAction>(*window, "play")->isEnabled(),
               "Stop must clean up and restore Play availability");
+        uiSource->setPlainText(originalUi);
+        audioSource->setPlainText(originalAudio);
+        uiDialog->close();
+        audioDialog->close();
         action("undo");
         waitFor([&] { return problems->count() == 0; });
         check(count() == originalCount + 3, "Play must preserve authoring Undo history");
@@ -230,6 +392,7 @@ int main(int argc, char** argv) {
         waitFor([&] { return viewport->renderedFrames() > beforeResize; });
         check(problems->count() == 0, "Native resize must keep rendering");
         // Closing a running session requests Stop and waits for its child to exit.
+        stage = "Play lifecycle";
         action("play");
         waitFor([&] { return play->state() == paper::editor::PlayController::State::Running; });
         window->close();
@@ -248,7 +411,7 @@ int main(int argc, char** argv) {
                "folders/categories/search/detach/placement, transform, isolated Play/Stop/close, "
                "reopen\n";
     } catch (const std::exception& error) {
-        std::cerr << error.what() << '\n';
+        std::cerr << stage << ": " << error.what() << '\n';
         return 1;
     }
 }

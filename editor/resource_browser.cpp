@@ -22,8 +22,8 @@ constexpr int pathRole = Qt::UserRole + 1;
 // Editor index budget, not an import limit. Prevent an accidentally selected huge
 // content directory from consuming unlimited memory; report truncation explicitly.
 constexpr size_t indexEntryLimit = 100000;
-const QStringList categories{"Models",    "Meshes",  "Sprites",   "Images", "Audio", "Scenes",
-                             "Templates", "Scripts", "Libraries", "Fonts",  "Other"};
+const QStringList categories{"Models", "Meshes",    "Sprites", "Images",    "Audio", "UI",
+                             "Scenes", "Templates", "Scripts", "Libraries", "Fonts", "Other"};
 QString categoryFor(const QString& suffix) {
     if (QStringList{"gltf", "glb", "obj", "fbx"}.contains(suffix))
         return "Models";
@@ -31,6 +31,10 @@ QString categoryFor(const QString& suffix) {
         return "Images";
     if (QStringList{"wav", "ogg", "mp3", "flac"}.contains(suffix))
         return "Audio";
+    if (suffix == "pabank")
+        return "Audio";
+    if (suffix == "pui")
+        return "UI";
     if (suffix == "dcscene" || suffix == "dcworld")
         return "Scenes";
     if (suffix == "dctemplates")
@@ -243,7 +247,7 @@ void ResourceBrowser::rebuild() {
         item->setData(0, Qt::UserRole, entry.resource);
         item->setData(0, pathRole, entry.path);
         item->setToolTip(0, entry.resource.isEmpty()
-                                ? tr("Project file; import and file editing are not available yet")
+                                ? tr("Double-click scene, audio bank or UI files to edit them")
                                 : tr("Double-click to add an instance to the current scene"));
         item->setIcon(0, style()->standardIcon(entry.resource.isEmpty()
                                                    ? QStyle::SP_FileIcon
@@ -286,5 +290,8 @@ void ResourceBrowser::activate() {
     const auto path = item->data(0, pathRole).toString();
     if (path.endsWith(".dcscene", Qt::CaseInsensitive) && openScene)
         openScene(std::filesystem::path(path.toStdU16String()));
+    else if (openAsset && (path.endsWith(".pabank", Qt::CaseInsensitive) ||
+                           path.endsWith(".pui", Qt::CaseInsensitive)))
+        openAsset(std::filesystem::path(path.toStdU16String()));
 }
 } // namespace paper::editor

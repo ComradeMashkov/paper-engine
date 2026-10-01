@@ -26,7 +26,7 @@ struct FrameUniforms {
     std::array<LightUniforms, maxSceneLights> lights;
 };
 struct ModelUniforms {
-    Float4 rotation, positionScale;
+    Float4 x, y, z, position, normalX, normalY, normalZ;
 };
 struct ParticleUniforms {
     // shape: faceted flag, rotation in radians, two reserved components.
@@ -44,7 +44,7 @@ static_assert(sizeof(Float4) == 16);                        // numbers: shader b
 static_assert(sizeof(LightUniforms) == 4 * sizeof(Float4)); // numbers: shader byte layout.
 static_assert(sizeof(FrameUniforms) ==
               (16 + 4 * maxSceneLights) * sizeof(Float4)); // numbers: shader byte layout.
-static_assert(sizeof(ModelUniforms) == 32 &&
+static_assert(sizeof(ModelUniforms) == 7 * sizeof(Float4) &&
               sizeof(MaterialUniforms) == 32);      // numbers: shader byte layout.
 static_assert(sizeof(Vertex) == 8 * sizeof(float)); // numbers: shader byte layout.
 [[nodiscard]] FrameUniforms frameUniforms(const Camera& camera, const RenderOptions& options,

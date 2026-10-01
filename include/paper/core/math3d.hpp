@@ -5,6 +5,7 @@
 #include <iterator>
 #include <limits>
 #include <numbers>
+#include <stdexcept>
 
 namespace paper {
 inline constexpr float pi3 = std::numbers::pi_v<float>;
@@ -12,6 +13,7 @@ namespace geometryTolerance {
 inline constexpr float normalizedLength = .00001f;
 inline constexpr float quaternionLength = 1e-7f;
 inline constexpr float parallelRayDirection = 1e-7f;
+inline constexpr float affineRelativeDeterminant = 1e-6f;
 } // namespace geometryTolerance
 namespace cameraDefaults {
 inline constexpr float fieldOfViewDegrees = 74;
@@ -60,6 +62,10 @@ struct Rotation3 {
         const Vec3 twice = cross(axis, p) * 2;
         return p + twice * w + cross(axis, twice);
     }
+    Rotation3 inverse() const {
+        const auto q = unit();
+        return {q.w, -q.x, -q.y, -q.z};
+    }
     static Rotation3 axisAngle(Vec3 axis, float angle) {
         axis = normalized(axis) *
                std::sin(angle * .5f); // numbers: quaternions encode half the rotation angle.
@@ -67,6 +73,23 @@ struct Rotation3 {
                 axis.z}; // numbers: quaternions encode half the rotation angle.
     }
 };
+// Column-major linear map. Retains shear when rotated, nonuniformly scaled parents compose.
+struct Linear3 {
+    Vec3 x{1, 0, 0}, y{0, 1, 0}, z{0, 0, 1};
+    Vec3 apply(Vec3 p) const { return x * p.x + y * p.y + z * p.z; }
+    Linear3 operator*(const Linear3& b) const { return {apply(b.x), apply(b.y), apply(b.z)}; }
+    float determinant() const { return dot(x, cross(y, z)); }
+    Linear3 transposed() const { return {{x.x, y.x, z.x}, {x.y, y.y, z.y}, {x.z, y.z, z.z}}; }
+    Linear3 inverse() const {
+        const float d = determinant();
+        if (!std::isfinite(d) || d == 0)
+            throw std::invalid_argument("Singular linear transform");
+        return Linear3{cross(y, z) / d, cross(z, x) / d, cross(x, y) / d}.transposed();
+    }
+};
+inline bool finite3(Vec3 p) {
+    return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z);
+}
 struct Camera {
     Vec3 position;
     float yaw = 0, pitch = 0, fov = units::radians(cameraDefaults::fieldOfViewDegrees);
@@ -79,10 +102,15 @@ struct Camera {
 struct Box3 {
     Vec3 center, half;
     float yaw = 0;
+    Rotation3 rotation{};
+    Rotation3 orientation() const {
+        return (rotation * Rotation3::axisAngle({0, 1, 0}, yaw)).unit();
+    }
 };
 // Slab intersection in the object's local frame. Returns nearest positive surface.
 inline float rayBox(Vec3 origin, Vec3 direction, const Box3& box) {
-    Vec3 o = rotateY(origin - box.center, -box.yaw), d = rotateY(direction, -box.yaw);
+    const auto inverse = box.orientation().inverse();
+    Vec3 o = inverse.apply(origin - box.center), d = inverse.apply(direction);
     const float ov[] = {o.x, o.y, o.z}, dv[] = {d.x, d.y, d.z},
                 h[] = {box.half.x, box.half.y, box.half.z};
     float near = 0, far = std::numeric_limits<float>::infinity();

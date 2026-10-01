@@ -1,13 +1,42 @@
 #include "paper/engine.hpp"
 #include "paper/assets/image.hpp"
+#include "paper/audio/bank.hpp"
 #include "paper/core/pixel_format.hpp"
 #include "paper/core/units.hpp"
+#include "paper/resources/resource_store.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 
 namespace paper {
+std::optional<Rect> Engine::clipRect() const {
+    if (!SDL_RenderClipEnabled(renderer_.get()))
+        return {};
+    SDL_Rect rect{};
+    if (!SDL_GetRenderClipRect(renderer_.get(), &rect))
+        throw std::runtime_error(SDL_GetError());
+    return Rect{static_cast<float>(rect.x) - canvasOffset_.x,
+                static_cast<float>(rect.y) - canvasOffset_.y, static_cast<float>(rect.w),
+                static_cast<float>(rect.h)};
+}
+bool Engine::setClipRect(std::optional<Rect> clip) {
+    if (!clip)
+        return SDL_SetRenderClipRect(renderer_.get(), nullptr);
+    const auto& r = *clip;
+    const double x = std::floor(double(r.x) + canvasOffset_.x),
+                 y = std::floor(double(r.y) + canvasOffset_.y),
+                 right = std::ceil(double(r.x) + canvasOffset_.x + r.w),
+                 bottom = std::ceil(double(r.y) + canvasOffset_.y + r.h);
+    constexpr double limit = std::numeric_limits<int>::max();
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(right) || !std::isfinite(bottom) ||
+        r.w < 0 || r.h < 0 || x < -limit || y < -limit || right > limit || bottom > limit ||
+        right - x > limit || bottom - y > limit)
+        return false;
+    SDL_Rect rect{static_cast<int>(x), static_cast<int>(y), static_cast<int>(right - x),
+                  static_cast<int>(bottom - y)};
+    return SDL_SetRenderClipRect(renderer_.get(), &rect);
+}
 namespace {
 constexpr int initialWidth = 1280, initialHeight = 800;
 constexpr int minimumWidth = 960, minimumHeight = 600;
@@ -84,8 +113,14 @@ Engine::Engine(const EngineConfig& config)
         assetPath_ /
             (config.handwrittenFontFile.empty() ? config.fontFile : config.handwrittenFontFile));
     refreshCanvas();
-    if (!headless_)
-        audio_.open(assetPath_, config.sounds);
+    if (!headless_) {
+        if (config.audioBankFile.empty())
+            audio_.open(assetPath_, config.sounds);
+        else {
+            ResourceStore files(assetPath_);
+            audio_.openBank(assetPath_, loadAudioBank(files.resolve(config.audioBankFile)));
+        }
+    }
     diagnostics_.addCommand(
         "renderer", "Show backend, VSync and world resolution", [this](std::string_view) {
             const auto size = worldRenderSize();

@@ -30,6 +30,7 @@ struct EngineConfig {
     bool profile = false;
     // Explicit content snapshots must never fall back to bundled/source assets.
     bool exactAssetRoot = false;
+    std::filesystem::path audioBankFile;
 };
 struct FrameTimings {
     RenderStats world;
@@ -61,6 +62,8 @@ class Engine {
     // Called once after present by the host loop; interval includes VSync/fallback pacing.
     void recordFrame(DebugFrame frame);
     void rect(Rect box, Color color);
+    [[nodiscard]] std::optional<Rect> clipRect() const;
+    [[nodiscard]] bool setClipRect(std::optional<Rect> clip);
     void roundedRect(Rect box, float radius, Color color);
     void outline(Rect box, Color color);
     void line(float x1, float y1, float x2, float y2, Color color);

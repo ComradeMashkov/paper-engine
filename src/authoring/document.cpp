@@ -2,6 +2,7 @@
 #include "paper/content/document.hpp"
 #include "paper/core/utf8.hpp"
 #include "paper/scenes/scene.hpp"
+#include "paper/scenes/transforms.hpp"
 #include <set>
 #include <tomlplusplus/toml.hpp>
 
@@ -25,6 +26,28 @@ size_t offset(std::string_view text, toml::source_position position) {
     return result;
 }
 std::string scalar(const ContentValue& value) {
+    if (value.is_object()) {
+        std::string result = "{";
+        bool first = true;
+        for (const auto& [key, child] : value.items()) {
+            if (!first)
+                result += ", ";
+            first = false;
+            result += scalar(ContentValue(key)) + " = " + scalar(child);
+        }
+        return result + "}";
+    }
+    if (value.is_array()) {
+        std::string result = "[";
+        bool first = true;
+        for (const auto& child : value) {
+            if (!first)
+                result += ", ";
+            first = false;
+            result += scalar(child);
+        }
+        return result + "]";
+    }
     const auto encoded = content::encode(ContentValue{{"value", value}});
     const auto first = encoded.find('=');
     require(first != std::string::npos, "Cannot encode property");
@@ -81,7 +104,9 @@ SceneDocument::SceneDocument(std::filesystem::path path, std::string source)
     constexpr size_t envelopeFields = 3;
     require(data_.size() == envelopeFields && data_.at("format") == "dcmo.scene" &&
                 data_.at("version").is_number_integer() &&
-                data_.at("version") == content::limits::sceneVersion && nodes().is_array(),
+                (data_.at("version") == content::limits::sceneVersion ||
+                 data_.at("version") == content::limits::legacySceneVersion) &&
+                nodes().is_array(),
             "Unsupported scene document");
     validateNodes(nodes());
 }
@@ -97,16 +122,47 @@ ContentValue SceneDocument::property(std::string_view id, std::string_view name)
 }
 void SceneDocument::setProperty(std::string_view id, std::string_view name,
                                 const ContentValue& value) {
-    const bool transform = name == "position" || name == "yaw" || name == "scale";
+    const bool transform = name == "position" || name == "yaw" || name == "scale" ||
+                           name == "rotation" || name == "basis";
     require(transform || name == "label" || name == "resource" || name == "parent" ||
-                name == "shadow",
+                name == "shadow" || name == "collision" || name == "bounds",
             "Property is not editable");
     const auto validNumber = [](const ContentValue& v) {
         return v.is_number() && std::isfinite(v.get<double>()) &&
                std::abs(v.get<double>()) <= sceneLimits::coordinateMeters;
     };
     if (!value.is_null()) {
-        if (name == "shadow")
+        if (name == "rotation" || name == "basis" || (name == "scale" && value.is_array())) {
+            require(data_.at("version") == content::limits::sceneVersion,
+                    "Free transforms require an explicit v3 scene migration");
+            auto transformValue = ContentValue::object();
+            transformValue[std::string(name)] = value;
+            (void)readTransform(transformValue);
+        } else if (name == "bounds") {
+            require(value.is_object() && value.contains("center") && value.contains("half"),
+                    "Expected collider bounds");
+            for (const auto key : {"center", "half"}) {
+                const auto& vector = value.at(key);
+                constexpr size_t components = 3;
+                require(vector.is_array() && vector.size() == components, "Expected collider XYZ");
+                for (const auto& v : vector)
+                    require(validNumber(v) &&
+                                (std::string_view(key) != "half" || v.get<double>() > 0),
+                            "Invalid collider coordinate/extent");
+            }
+            if (value.contains("rotation")) {
+                require(data_.at("version") == content::limits::sceneVersion &&
+                            !value.contains("yaw"),
+                        "Free collider rotation requires v3");
+                (void)readRotation(value.at("rotation"));
+            }
+            if (value.contains("yaw"))
+                require(validNumber(value.at("yaw")), "Invalid collider yaw");
+        } else if (name == "collision") {
+            require(value.is_boolean() ||
+                        (data_.at("version") == content::limits::sceneVersion && value.is_object()),
+                    "Invalid collider override");
+        } else if (name == "shadow")
             require(value.is_boolean(), "Expected shadow switch");
         else if (!transform)
             require(value.is_string(), "Expected text property");
@@ -210,13 +266,51 @@ std::string SceneDocument::serialized() const {
         const auto* table = sourceNodes->get(i)->as_table();
         require(table, "Expected source node table");
         std::string added;
-        for (const auto name :
-             {"position", "yaw", "scale", "label", "resource", "parent", "shadow", "remove"}) {
+        for (const auto name : {"position", "yaw", "rotation", "basis", "scale", "label",
+                                "resource", "parent", "shadow", "collision", "bounds", "remove"}) {
             const auto oldValue = before.contains(name) ? before.at(name) : ContentValue{};
             const auto newValue = after.contains(name) ? after.at(name) : ContentValue{};
             if (oldValue == newValue)
                 continue;
             if (const auto* original = table->get(name)) {
+                if (const auto* childTable = original->as_table();
+                    childTable && !childTable->is_inline()) {
+                    if (newValue.is_object()) {
+                        std::string inserted;
+                        for (const auto& [key, child] : *childTable) {
+                            const std::string field(key.str());
+                            const auto next =
+                                newValue.contains(field) ? newValue.at(field) : ContentValue{};
+                            if (oldValue.at(field) == next)
+                                continue;
+                            auto begin = offset(source_, child.source().begin),
+                                 end = offset(source_, child.source().end);
+                            if (next.is_null()) {
+                                const auto line = source_.rfind('\n', begin);
+                                begin = line == std::string::npos ? 0 : line + 1;
+                                patches.push_back({begin, end, ""});
+                            } else
+                                patches.push_back({begin, end, scalar(next)});
+                        }
+                        for (const auto& [key, child] : newValue.items())
+                            if (!oldValue.contains(key))
+                                inserted +=
+                                    scalar(ContentValue(key)) + " = " + scalar(child) + "\n";
+                        if (!inserted.empty()) {
+                            const auto at =
+                                lineEnd(source_, offset(source_, childTable->source().begin));
+                            patches.push_back({at, at, std::move(inserted)});
+                        }
+                    } else {
+                        const auto begin = offset(source_, childTable->source().begin);
+                        const auto previousLine = source_.rfind('\n', begin);
+                        patches.push_back({previousLine == std::string::npos ? 0 : previousLine + 1,
+                                           lineEnd(source_, regionEnd(source_, *childTable)), ""});
+                        if (!newValue.is_null())
+                            added += std::string(name) + " = " + scalar(newValue) + "\n";
+                    }
+                    continue;
+                }
                 auto begin = offset(source_, original->source().begin);
                 auto end = offset(source_, original->source().end);
                 if (newValue.is_null()) {

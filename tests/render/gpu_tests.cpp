@@ -358,6 +358,28 @@ int main(int, char**) {
         options.particles = {};
         check(center(draw(std::span(&background, 1))).r > 240,
               "removing foreground layers restores unobscured world");
+        Mesh3 source;
+        quad(source, {-1, 1, 0}, {1, 1, 0}, {1, -1, 0}, {-1, -1, 0}, red);
+        MeshTransform free{{0, 0, 3}, Rotation3::axisAngle({0, 0, 1}, pi3 / 2), 1, {2, .5f, 1}};
+        free.basis.y = {.3f, 1, 0};
+        const MeshInstance affine{makeMesh(source), free};
+        Mesh3 baked = source;
+        for (auto& triangle : baked)
+            for (auto& vertex : triangle.v) {
+                const auto v = vertex.p;
+                vertex.p = {-.5f * v.y, 2 * v.x + .15f * v.y, v.z + 3};
+            }
+        const MeshInstance golden{makeMesh(baked), {}};
+        const auto actual = draw(std::span(&affine, 1)), expected = draw(std::span(&golden, 1));
+        size_t differences = 0, covered = 0;
+        for (size_t pixel = 0; pixel < actual.size(); ++pixel) {
+            differences += actual[pixel].r != expected[pixel].r ||
+                           actual[pixel].g != expected[pixel].g ||
+                           actual[pixel].b != expected[pixel].b;
+            covered += actual[pixel].r > 240 && actual[pixel].g < 10;
+        }
+        check(differences < 20 && covered > 100,
+              "GPU quaternion, anisotropic scale and shear match independent baked geometry");
         std::cout << "GPU checks passed on " << SDL_GetGPUDeviceDriver(device.get()) << '\n';
         return 0;
     } catch (const std::exception& error) {
