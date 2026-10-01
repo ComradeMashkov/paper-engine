@@ -34,3 +34,7 @@ literal_sha256 = "9fe73943084f24a4544350e516841d6d970a8e6f2d68d992c871b79368e6bf
 ["tests/editor/play_fixture.cpp"]
 reason = "Test-only runtime fixture: exit code 7, 10 ms polling and 30 second orphan bound intentionally exercise failure, cooperative Stop and forced termination without executing a game."
 literal_sha256 = "bff30bd378f3a7ba96349ef0e3bec0b159e457f8d10ef7831cb5d0ccc9908f82"
+
+["tests/scenes/transform_tests.cpp"]
+reason = "Independent analytic rotation, anisotropic normal, sheared hierarchy, inverse ray-distance and authored quaternion/scale fixtures; not engine defaults."
+literal_sha256 = "f54d42bcc34225fbad12b32eb810e40865c61d8b546fd9708d791400b42dcaf3"

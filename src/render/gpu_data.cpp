@@ -117,12 +117,11 @@ FrameUniforms frameUniforms(const Camera& camera, const RenderOptions& options,
     return result;
 }
 ModelUniforms modelUniforms(const MeshTransform& t) {
-    if (!finite(t.position) || !std::isfinite(t.scale) || t.scale <= 0 ||
-        !std::isfinite(t.rotation.w) || !std::isfinite(t.rotation.x) ||
-        !std::isfinite(t.rotation.y) || !std::isfinite(t.rotation.z))
+    if (!t.valid())
         throw std::invalid_argument("Invalid mesh transform");
-    const auto r = t.rotation.unit();
-    return {{r.x, r.y, r.z, r.w}, packed(t.position, t.scale)};
+    const auto m = t.linear(), n = m.inverse().transposed();
+    return {packed(m.x, 0), packed(m.y, 0), packed(m.z, 0), packed(t.position, 1),
+            packed(n.x, 0), packed(n.y, 0), packed(n.z, 0)};
 }
 Float4 project(Vec3 position, const FrameUniforms& f) {
     const auto xyz = [](Float4 value) { return Vec3{value.x, value.y, value.z}; };

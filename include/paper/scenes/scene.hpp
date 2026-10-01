@@ -31,8 +31,10 @@ struct SceneNode {
     size_t pose = 0;
     int detail = 0, legacyDoor = -1, animation = -1;
     Box3 bounds;
+    Box3 localBounds; // Authored collider geometry, before the exact world affine transform.
     Vec3 openOffset;
     bool collidable = false, acoustic = false, shadow = true;
+    bool freeTransform = false;
     std::shared_ptr<const SceneAsset> asset, activeAsset, inspection;
     std::vector<std::shared_ptr<const SceneAsset>> poses;
     std::optional<Light> light;

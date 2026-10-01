@@ -1,6 +1,8 @@
 #include "paper/scenes/scene.hpp"
 #include "paper/content/document.hpp"
 #include "paper/core/pixel_format.hpp"
+#include "paper/render/spatial.hpp"
+#include "paper/scenes/transforms.hpp"
 #include <functional>
 #include <set>
 
@@ -29,9 +31,13 @@ Box3 box(const Value& j) {
     require(j.is_object() && j.contains("center") && j.contains("half"),
             "expected box center/half");
     for (const auto& [field, child] : j.items())
-        require(field == "center" || field == "half" || field == "yaw",
+        require(field == "center" || field == "half" || field == "yaw" || field == "rotation",
                 "unknown box field: " + field);
     Box3 b{vec(j.at("center")), vec(j.at("half")), number(j.value("yaw", Value(0)))};
+    if (j.contains("rotation")) {
+        require(!j.contains("yaw"), "Box cannot have both yaw and rotation");
+        b.rotation = readRotation(j.at("rotation"));
+    }
     require(b.half.x > 0 && b.half.y > 0 && b.half.z > 0, "box half extents must be positive");
     return b;
 }
@@ -53,13 +59,21 @@ std::string id(const Value& j) {
     return value;
 }
 void nodeKeys(const Value& j) {
-    keys(j, {"id",           "template",       "parent",     "position",
-             "yaw",          "scale",          "room",       "kind",
-             "label",        "bounds",         "detail",     "reach",
-             "resource",     "activeResource", "poses",      "inspectResource",
-             "inspectScale", "openAngle",      "openOffset", "legacyDoor",
-             "stateKey",     "visibleWhen",    "collision",  "acoustic",
-             "shadow",       "animation",      "light",      "pose",
+    keys(j, {"id",           "template",
+             "parent",       "position",
+             "yaw",          "rotation",
+             "basis",        "scale",
+             "room",         "kind",
+             "label",        "bounds",
+             "detail",       "reach",
+             "resource",     "activeResource",
+             "poses",        "inspectResource",
+             "inspectScale", "openAngle",
+             "openOffset",   "legacyDoor",
+             "stateKey",     "visibleWhen",
+             "collision",    "acoustic",
+             "shadow",       "animation",
+             "light",        "pose",
              "actions",      "itemInstance"});
 }
 struct Loader {
@@ -89,9 +103,25 @@ struct Loader {
                 "Expected format, version and native document payload; imports are unsupported");
             require(document.at("format").get<std::string>() == "dcmo." + std::string(field) &&
                         document.at("version").is_number_integer() &&
-                        document.at("version") == content::limits::sceneVersion,
+                        (document.at("version") == content::limits::sceneVersion ||
+                         document.at("version") == content::limits::legacySceneVersion),
                     "Unsupported DCMO document format/version");
             auto payload = document.at(field);
+            if (document.at("version") == content::limits::legacySceneVersion) {
+                std::function<void(const Value&)> legacyCheck = [&](const Value& value) {
+                    if (value.is_object()) {
+                        require(!value.contains("rotation") && !value.contains("basis") &&
+                                    (!value.contains("scale") || !value.at("scale").is_array()),
+                                "Free transforms require an explicit DCMO 3 migration");
+                        for (const auto& [key, child] : value.items())
+                            legacyCheck(child);
+                    } else if (value.is_array())
+                        for (const auto& child : value)
+                            legacyCheck(child);
+                };
+                if (field == "scene" || field == "templates")
+                    legacyCheck(payload);
+            }
             require(payload.is_object() && !payload.contains("version"),
                     "Version belongs to the DCMO envelope");
             payload["version"] = content::limits::sceneVersion;
@@ -237,7 +267,7 @@ struct Loader {
 };
 } // namespace
 bool contains(const Box3& b, Vec3 p) {
-    const auto q = rotateY(p - b.center, -b.yaw);
+    const auto q = b.orientation().inverse().apply(p - b.center);
     return std::abs(q.x) <= b.half.x && std::abs(q.y) <= b.half.y && std::abs(q.z) <= b.half.z;
 }
 std::shared_ptr<ScenePackage> loadScenes(const std::filesystem::path& root,
@@ -388,10 +418,9 @@ std::shared_ptr<ScenePackage> loadScenes(const std::filesystem::path& root,
             n.kind = j.value("kind", std::string{});
             n.label = j.value("label", std::string{});
             n.yaw = number(j.value("yaw", Value(0)));
-            n.transform = {vec(j.value("position", Value::array({0, 0, 0}))),
-                           Rotation3::axisAngle({0, 1, 0}, n.yaw),
-                           number(j.value("scale", Value(1)), sceneLimits::scaleMinimum,
-                                  sceneLimits::scaleMaximum)};
+            n.transform = readTransform(j);
+            n.freeTransform = j.contains("rotation") || j.contains("basis") ||
+                              j.value("scale", Value(1)).is_array();
             if (j.contains("parent")) {
                 n.parent = id(j.at("parent"));
                 auto parent = resolve(n.parent, depth + 1);
@@ -404,6 +433,7 @@ std::shared_ptr<ScenePackage> loadScenes(const std::filesystem::path& root,
                         name);
                 n.transform = compose(parent.transform, n.transform);
                 n.yaw += parent.yaw;
+                n.freeTransform = n.freeTransform || parent.freeTransform;
                 if (n.room.empty())
                     n.room = parent.room;
             }
@@ -417,6 +447,11 @@ std::shared_ptr<ScenePackage> loadScenes(const std::filesystem::path& root,
                         n.transform.scale >= sceneLimits::scaleMinimum &&
                         n.transform.scale <= sceneLimits::scaleMaximum,
                     "composed scale out of range: " + name);
+            for (const auto axis :
+                 {n.transform.linear().x, n.transform.linear().y, n.transform.linear().z})
+                require(length(axis) >= sceneLimits::scaleMinimum &&
+                            length(axis) <= sceneLimits::scaleMaximum,
+                        "composed axis scale out of range: " + name);
             for (float value :
                  {n.transform.position.x, n.transform.position.y, n.transform.position.z})
                 require(std::isfinite(value) && std::abs(value) <= sceneLimits::coordinateMeters,
@@ -440,15 +475,19 @@ std::shared_ptr<ScenePackage> loadScenes(const std::filesystem::path& root,
                 j.contains("bounds")
                     ? box(j.at("bounds"))
                     : Box3{{}, {minimumExtentMeters, minimumExtentMeters, minimumExtentMeters}};
-            n.bounds.center = n.transform.point(n.bounds.center);
-            n.bounds.half = n.bounds.half * n.transform.scale;
-            n.bounds.yaw += n.yaw;
+            n.localBounds = n.bounds;
+            if (n.freeTransform)
+                n.bounds = worldBounds(n.localBounds, n.transform);
+            else {
+                n.bounds.center = n.transform.point(n.bounds.center);
+                n.bounds.half = n.bounds.half * n.transform.scale;
+                n.bounds.yaw += n.yaw;
+            }
             n.detail = j.value("detail", 0);
             n.reach =
                 number(j.value("reach", Value(n.reach)), minimumExtentMeters, maximumReachMeters);
             n.openAngle = number(j.value("openAngle", Value(0)));
-            n.openOffset = rotateY(
-                vec(j.value("openOffset", Value::array({0, 0, 0}))) * n.transform.scale, n.yaw);
+            n.openOffset = n.transform.vector(vec(j.value("openOffset", Value::array({0, 0, 0}))));
             n.legacyDoor = j.value("legacyDoor", -1);
             n.stateKey = j.value("stateKey", std::string{});
             n.visibleWhen = j.value("visibleWhen", std::string{});

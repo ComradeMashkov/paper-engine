@@ -25,7 +25,7 @@ struct Frame {
     float4 shadowParams;
     LightData lights[PAPER_MAX_SCENE_LIGHTS]; // ABI: maxSceneLights
 };
-struct Model { float4 rotation; float4 positionScale; };
+struct Model { float4 x, y, z, position, normalX, normalY, normalZ; };
 struct Material { float4 region; float4 flags; };
 float3 rotateVector(float3 value, float4 rotation) {
     float3 twice = 2 * cross(rotation.xyz, value);
@@ -76,9 +76,8 @@ cbuffer ModelBuffer : register(b1, space1) { Model model; };
 #if defined(WORLD_VERTEX)
 WorldOutput world_vertex(WorldInput input) {
     WorldOutput output;
-    output.worldPosition = model.positionScale.xyz +
-        rotateVector(input.position * model.positionScale.w, model.rotation);
-    output.normal = rotateVector(input.normal, model.rotation);
+    output.worldPosition = model.position.xyz + model.x.xyz * input.position.x + model.y.xyz * input.position.y + model.z.xyz * input.position.z;
+    output.normal = model.normalX.xyz * input.normal.x + model.normalY.xyz * input.normal.y + model.normalZ.xyz * input.normal.z;
     output.position = projectPosition(output.worldPosition - frame.cameraPosition.xyz,
         frame.cameraRight.xyz, frame.cameraUp.xyz, frame.cameraForward.xyz,
         frame.cameraPosition.w, frame.cameraRight.w, frame.cameraUp.w, frame.cameraForward.w);
@@ -88,8 +87,7 @@ WorldOutput world_vertex(WorldInput input) {
 #else
 ShadowOutput shadow_vertex(WorldInput input) {
     ShadowOutput output;
-    float3 position = model.positionScale.xyz +
-        rotateVector(input.position * model.positionScale.w, model.rotation);
+    float3 position = model.position.xyz + model.x.xyz * input.position.x + model.y.xyz * input.position.y + model.z.xyz * input.position.z;
     output.position = projectPosition(position - frame.shadowPosition.xyz,
         frame.shadowRight.xyz, frame.shadowUp.xyz, frame.shadowForward.xyz,
         frame.shadowPosition.w, 1, frame.shadowRight.w, frame.shadowUp.w);

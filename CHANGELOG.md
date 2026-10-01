@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0-alpha.1+build.6] - 2026-10-01
+
+- Add DCMO 3 quaternion rotation, axis scale and exact affine hierarchy transforms.
+  Keep DCMO 2 readable/editable and provide an explicit migration on a new copy.
+- Share full transforms between scene placement, picking, bounds, normals, rendering
+  and shadows; add editor quaternion/axis controls and world-axis rotation.
+- Preserve shear through reparenting; reject singular or invalid transforms.
+- Compatibility: rebuild shaders with the changed model-uniform ABI. glTF import
+  retains its existing subset. Migration is explicit and leaves originals intact.
+- Verification: Release libraries/editor compiled; transform, authoring and resource
+  tests passed; Metal GPU shader tests passed; migration copy/diff guards checked.
+
 ## [0.4.0-alpha.1+build.5] - 2026-09-25
 
 - Add host-configured Play/Stop, scene start-point selection and a bounded Console.

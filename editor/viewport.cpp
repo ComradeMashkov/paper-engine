@@ -248,7 +248,7 @@ void Viewport::mouseReleaseEvent(QMouseEvent* event) {
         const auto value = dragValue_;
         cancelDrag();
         if (transformed && (length(delta) > 0 || value != (tool_ == Tool::Scale ? 1 : 0)))
-            transformed(tool_, delta, value);
+            transformed(tool_, tool_ == Tool::Rotate ? rotationAxis_ : delta, value);
     }
 }
 void Viewport::mouseMoveEvent(QMouseEvent* event) {
@@ -445,8 +445,10 @@ void Viewport::updateDrag(QPointF position) {
         if (tool_ == Tool::Move)
             transform.position = transform.position + dragDelta_;
         else if (tool_ == Tool::Rotate) {
-            transform.position = dragPivot_ + rotateY(transform.position - dragPivot_, dragValue_);
-            transform.rotation = Rotation3::axisAngle({0, 1, 0}, dragValue_) * transform.rotation;
+            transform.position = dragPivot_ + Rotation3::axisAngle(rotationAxis_, dragValue_)
+                                                  .apply(transform.position - dragPivot_);
+            transform.rotation =
+                Rotation3::axisAngle(rotationAxis_, dragValue_) * transform.rotation;
         } else if (tool_ == Tool::Scale) {
             transform.position = dragPivot_ + (transform.position - dragPivot_) * dragValue_;
             transform.scale *= dragValue_;

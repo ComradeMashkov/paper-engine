@@ -31,9 +31,9 @@ Box3 worldBounds(const Box3& local, const MeshTransform& transform) {
     for (float x : {-1.f, 1.f})
         for (float y : {-1.f, 1.f})
             for (float z : {-1.f, 1.f})
-                include(transform.point(local.center + rotateY({x * local.half.x, y * local.half.y,
-                                                                z * local.half.z},
-                                                               local.yaw)),
+                include(transform.point(local.center + local.orientation().apply(
+                                                           {x * local.half.x, y * local.half.y,
+                                                            z * local.half.z})),
                         low, high);
     return extents(low, high);
 }
@@ -120,17 +120,19 @@ MeshHit MeshIndex::pick(Vec3 origin, Vec3 direction, SpatialQueryStats* stats) c
 }
 MeshHit MeshQueryCache::pick(const MeshInstance& instance, Vec3 origin, Vec3 direction,
                              SpatialQueryStats* stats) {
-    if (!instance.mesh || instance.transform.scale <= 0)
+    if (!instance.mesh || !instance.transform.valid() || !finite3(origin) || !finite3(direction))
         return {};
     auto i = indices_.find(instance.mesh);
     if (i == indices_.end())
         i = indices_.try_emplace(instance.mesh, instance.mesh).first;
     const auto& t = instance.transform;
-    const auto q = t.rotation.unit();
-    const Rotation3 inverse{q.w, -q.x, -q.y, -q.z};
-    auto hit = i->second.pick(inverse.apply(origin - t.position) / t.scale,
-                              inverse.apply(direction), stats);
-    hit.distance *= t.scale;
+    const auto inverse = t.linear().inverse();
+    const auto localDirection = inverse.apply(direction);
+    const float factor = length(localDirection);
+    if (!std::isfinite(factor) || factor <= 0)
+        return {};
+    auto hit = i->second.pick(inverse.apply(origin - t.position), localDirection / factor, stats);
+    hit.distance /= factor;
     return hit;
 }
 void MeshQueryCache::collect() {

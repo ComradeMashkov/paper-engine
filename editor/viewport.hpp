@@ -23,6 +23,10 @@ class Viewport final : public QWidget {
     void tool(Tool tool);
     void grid(bool enabled) { grid_ = enabled; }
     void snap(bool enabled) { snap_ = enabled; }
+    void rotationAxis(Vec3 axis) {
+        cancelDrag();
+        rotationAxis_ = axis;
+    }
     void editingEnabled(bool enabled) {
         if (!enabled)
             cancelDrag();
@@ -59,6 +63,7 @@ class Viewport final : public QWidget {
     int handle(QPointF position) const;
     void cancelDrag();
     void updateDrag(QPointF position);
+    Vec3 rotationAxis_{0, 1, 0};
     void navigate();
     std::filesystem::path shaders_;
     QTimer timer_;

@@ -2,6 +2,7 @@
 #include "paper/content/document.hpp"
 #include "paper/core/utf8.hpp"
 #include "paper/scenes/scene.hpp"
+#include "paper/scenes/transforms.hpp"
 #include <set>
 #include <tomlplusplus/toml.hpp>
 
@@ -81,7 +82,9 @@ SceneDocument::SceneDocument(std::filesystem::path path, std::string source)
     constexpr size_t envelopeFields = 3;
     require(data_.size() == envelopeFields && data_.at("format") == "dcmo.scene" &&
                 data_.at("version").is_number_integer() &&
-                data_.at("version") == content::limits::sceneVersion && nodes().is_array(),
+                (data_.at("version") == content::limits::sceneVersion ||
+                 data_.at("version") == content::limits::legacySceneVersion) &&
+                nodes().is_array(),
             "Unsupported scene document");
     validateNodes(nodes());
 }
@@ -97,7 +100,8 @@ ContentValue SceneDocument::property(std::string_view id, std::string_view name)
 }
 void SceneDocument::setProperty(std::string_view id, std::string_view name,
                                 const ContentValue& value) {
-    const bool transform = name == "position" || name == "yaw" || name == "scale";
+    const bool transform = name == "position" || name == "yaw" || name == "scale" ||
+                           name == "rotation" || name == "basis";
     require(transform || name == "label" || name == "resource" || name == "parent" ||
                 name == "shadow",
             "Property is not editable");
@@ -106,7 +110,13 @@ void SceneDocument::setProperty(std::string_view id, std::string_view name,
                std::abs(v.get<double>()) <= sceneLimits::coordinateMeters;
     };
     if (!value.is_null()) {
-        if (name == "shadow")
+        if (name == "rotation" || name == "basis" || (name == "scale" && value.is_array())) {
+            require(data_.at("version") == content::limits::sceneVersion,
+                    "Free transforms require an explicit v3 scene migration");
+            auto transformValue = ContentValue::object();
+            transformValue[std::string(name)] = value;
+            (void)readTransform(transformValue);
+        } else if (name == "shadow")
             require(value.is_boolean(), "Expected shadow switch");
         else if (!transform)
             require(value.is_string(), "Expected text property");
@@ -210,8 +220,8 @@ std::string SceneDocument::serialized() const {
         const auto* table = sourceNodes->get(i)->as_table();
         require(table, "Expected source node table");
         std::string added;
-        for (const auto name :
-             {"position", "yaw", "scale", "label", "resource", "parent", "shadow", "remove"}) {
+        for (const auto name : {"position", "yaw", "rotation", "basis", "scale", "label",
+                                "resource", "parent", "shadow", "remove"}) {
             const auto oldValue = before.contains(name) ? before.at(name) : ContentValue{};
             const auto newValue = after.contains(name) ? after.at(name) : ContentValue{};
             if (oldValue == newValue)

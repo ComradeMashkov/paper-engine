@@ -1,6 +1,7 @@
 #include "paper/editor/application.hpp"
 #include "paper/authoring/document.hpp"
 #include "paper/content/document.hpp"
+#include "paper/scenes/transforms.hpp"
 #include "play_controller.hpp"
 #include "resource_browser.hpp"
 #include "viewport.hpp"
@@ -276,8 +277,10 @@ class Window final : public QMainWindow {
         connect(resource_, &QComboBox::activated, this, [this] {
             editProperty("resource", resource_->currentData().toString().toStdString());
         });
-        const std::array<QString, 5> labels{tr("X, m"), tr("Y, m"), tr("Z, m"), tr("Y rotation, °"),
-                                            tr("Scale")};
+        const std::array<QString, 12> labels{
+            tr("X, m"),          tr("Y, m"),       tr("Z, m"),       tr("Y rotation, °"),
+            tr("Uniform scale"), tr("Rotation X"), tr("Rotation Y"), tr("Rotation Z"),
+            tr("Rotation W"),    tr("Scale X"),    tr("Scale Y"),    tr("Scale Z")};
         for (size_t i = 0; i < fields_.size(); ++i) {
             auto* spin = fields_[i] = new QDoubleSpinBox;
             spin->setObjectName(QString("transform%1").arg(i));
@@ -288,7 +291,7 @@ class Window final : public QMainWindow {
                 i == yawField ? sceneLimits::coordinateMeters * units::degreesPerHalfTurn / pi3
                               : sceneLimits::coordinateMeters;
             spin->setRange(-limit, limit);
-            if (i == scaleField)
+            if (i == scaleField || i >= axisScaleField)
                 spin->setRange(sceneLimits::scaleMinimum, sceneLimits::scaleMaximum);
             constexpr double positionStepMeters = .1, rotationStepDegrees = 1;
             spin->setSingleStep(i == yawField ? rotationStepDegrees : positionStepMeters);
@@ -466,7 +469,16 @@ class Window final : public QMainWindow {
         auto* tools = addToolBar(tr("Scene Tools"));
         tools->setObjectName("sceneTools");
         auto* modes = new QActionGroup(this);
-        const std::array<QString, 4> titles{tr("Select"), tr("Move"), tr("Rotate Y"), tr("Scale")};
+        const std::array<QString, 4> titles{tr("Select"), tr("Move"), tr("Rotate"), tr("Scale")};
+        auto* rotationAxis = new QComboBox;
+        rotationAxis->setAccessibleName(tr("World rotation axis"));
+        rotationAxis->addItems({tr("Rotate X"), tr("Rotate Y"), tr("Rotate Z")});
+        rotationAxis->setCurrentIndex(1);
+        tools->addWidget(rotationAxis);
+        connect(rotationAxis, &QComboBox::currentIndexChanged, this, [this](int index) {
+            constexpr std::array<Vec3, 3> axes{Vec3{1, 0, 0}, Vec3{0, 1, 0}, Vec3{0, 0, 1}};
+            viewport_->rotationAxis(axes.at(static_cast<size_t>(index)));
+        });
         const std::array<int, 4> shortcuts{Qt::Key_Q, Qt::Key_W, Qt::Key_E, Qt::Key_R};
         for (size_t i = 0; i < titles.size(); ++i) {
             auto* action = tools->addAction(titles[i]);
@@ -564,7 +576,8 @@ class Window final : public QMainWindow {
     }
 
   private:
-    static constexpr size_t yawField = 3, scaleField = 4, propertyCount = 5;
+    static constexpr size_t yawField = 3, scaleField = 4, quaternionField = 5, axisScaleField = 9,
+                            propertyCount = 12;
     void dock(QString title, QString name, QWidget* contents, Qt::DockWidgetArea area) {
         auto* panel = new QDockWidget(title, this);
         panel->setObjectName(name);
@@ -702,7 +715,24 @@ class Window final : public QMainWindow {
             for (size_t i = 0; i < yawField; ++i)
                 fields_[i]->setValue(position.at(i).get<double>());
             fields_[yawField]->setValue(node.value("yaw", 0.0) * units::degreesPerHalfTurn / pi3);
-            fields_[scaleField]->setValue(node.value("scale", 1.0));
+            const auto t = readTransform(node);
+            fields_[scaleField]->setValue(t.scale);
+            const auto q = t.rotation.unit();
+            const std::array<double, 4> components{q.x, q.y, q.z, q.w};
+            const std::array<double, 3> scales{t.scaleAxes.x * t.scale, t.scaleAxes.y * t.scale,
+                                               t.scaleAxes.z * t.scale};
+            const bool free = current_->data().at("version") == content::limits::sceneVersion;
+            fields_[scaleField]->setEnabled(!free);
+            fields_[yawField]->setEnabled(!node.contains("rotation") && !node.contains("basis"));
+            for (size_t i = 0; i < components.size(); ++i) {
+                fields_[quaternionField + i]->setValue(components[i]);
+                fields_[quaternionField + i]->setEnabled(free);
+            }
+            for (size_t i = 0; i < scales.size(); ++i) {
+                fields_[axisScaleField + i]->setValue(scales[i]);
+                fields_[axisScaleField + i]->setEnabled(free);
+            }
+
             for (size_t i = 0; i < fields_.size(); ++i)
                 displayed_[i] = fields_[i]->value();
         }
@@ -712,19 +742,63 @@ class Window final : public QMainWindow {
         if (updating_ || !current_ || selected_.empty() ||
             fields_[component]->value() == displayed_[component])
             return;
-        const auto name = component < yawField    ? "position"
-                          : component == yawField ? "yaw"
-                                                  : "scale";
-        auto after =
-            project_->effective(current_->node(selected_))
-                .value(name, component < yawField ? ContentValue::array({0, 0, 0})
-                                                  : ContentValue(component == scaleField ? 1 : 0));
-        if (component < yawField)
-            after[component] = fields_[component]->value();
-        else
-            after = fields_[component]->value() *
-                    (component == yawField ? pi3 / units::degreesPerHalfTurn : 1);
-        editProperty(name, after);
+        try {
+            auto candidate = *current_;
+            const auto effective = project_->effective(current_->node(selected_));
+            auto t = readTransform(effective);
+            if (component < yawField) {
+                auto value = effective.value("position", ContentValue::array({0, 0, 0}));
+                value[component] = fields_[component]->value();
+                candidate.setProperty(selected_, "position", value);
+            } else if (component == yawField)
+                candidate.setProperty(selected_, "yaw",
+                                      fields_[component]->value() * pi3 /
+                                          units::degreesPerHalfTurn);
+            else if (component == scaleField &&
+                     current_->data().at("version") == content::limits::legacySceneVersion)
+                candidate.setProperty(selected_, "scale", fields_[component]->value());
+            else {
+                if (component >= quaternionField && component < axisScaleField) {
+                    auto q = ContentValue::array(
+                        {t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w});
+                    q[component - quaternionField] = fields_[component]->value();
+                    t.rotation = readRotation(q);
+                    clearEffective(candidate, "yaw");
+                    candidate.setProperty(selected_, "rotation",
+                                          ContentValue::array({t.rotation.x, t.rotation.y,
+                                                               t.rotation.z, t.rotation.w}));
+                } else {
+                    auto value =
+                        ContentValue::array({t.scaleAxes.x * t.scale, t.scaleAxes.y * t.scale,
+                                             t.scaleAxes.z * t.scale});
+                    if (component == scaleField)
+                        for (auto& v : value)
+                            v = v.get<double>() * fields_[component]->value() / t.scale;
+                    else
+                        value[component - axisScaleField] = fields_[component]->value();
+                    candidate.setProperty(selected_, "scale", value);
+                }
+            }
+            commitNodes(candidate.nodes(), tr("Change Transform"), selected_);
+        } catch (const std::exception& e) {
+            problem(text(e.what()));
+            inspect();
+        }
+    }
+    void clearEffective(authoring::SceneDocument& candidate, std::string_view name) {
+        auto nodes = candidate.nodes();
+        for (auto& node : nodes)
+            if (node.at("id") == selected_) {
+                node.erase(name);
+                const auto effective = project_->effective(node);
+                if (effective.contains(name)) {
+                    auto removed = node.value("remove", ContentValue::array());
+                    if (std::ranges::none_of(removed, [&](const auto& key) { return key == name; }))
+                        removed.elements().push_back(std::string(name));
+                    node["remove"] = removed;
+                }
+            }
+        candidate.replaceNodes(nodes);
     }
     void populateAssets() {
         if (!package_ || !project_)
@@ -935,17 +1009,24 @@ class Window final : public QMainWindow {
             auto candidate = *current_;
             setEffectiveProperty(candidate, "parent", parent);
             const auto position =
-                destination ? rotateY(node->transform.position - destination->transform.position,
-                                      -destination->yaw) /
-                                  destination->transform.scale
+                destination ? destination->transform.inversePoint(node->transform.position)
                             : node->transform.position;
             candidate.setProperty(selected_, "position",
                                   ContentValue::array({position.x, position.y, position.z}));
-            candidate.setProperty(selected_, "yaw",
-                                  node->yaw - (destination ? destination->yaw : 0));
-            candidate.setProperty(selected_, "scale",
-                                  node->transform.scale /
-                                      (destination ? destination->transform.scale : 1));
+            if (current_->data().at("version") == content::limits::sceneVersion) {
+                const auto local = relativeTransform(
+                    destination ? destination->transform : MeshTransform{}, node->transform);
+                const auto fields = writeTransform(local);
+                clearEffective(candidate, "yaw");
+                for (const auto& [key, value] : fields.items())
+                    candidate.setProperty(selected_, key, value);
+            } else {
+                candidate.setProperty(selected_, "yaw",
+                                      node->yaw - (destination ? destination->yaw : 0));
+                candidate.setProperty(selected_, "scale",
+                                      node->transform.scale /
+                                          (destination ? destination->transform.scale : 1));
+            }
             commitNodes(candidate.nodes(), tr("Change Parent"), selected_);
         } catch (const std::exception& error) {
             problem(text(error.what()));
@@ -961,16 +1042,34 @@ class Window final : public QMainWindow {
             if (tool == Viewport::Tool::Move) {
                 const auto* parent = compiledNode(effective.value("parent", ""));
                 if (parent)
-                    delta = rotateY(delta, -parent->yaw) / parent->transform.scale;
+                    delta = parent->transform.linear().inverse().apply(delta);
                 auto pos = effective.value("position", ContentValue::array({0, 0, 0}));
                 pos[0] = pos.at(0).get<float>() + delta.x;
                 pos[1] = pos.at(1).get<float>() + delta.y;
                 constexpr size_t zComponent = 2;
                 pos[zComponent] = pos.at(zComponent).get<float>() + delta.z;
                 candidate.setProperty(selected_, "position", pos);
-            } else if (tool == Viewport::Tool::Rotate)
+            } else if (current_->data().at("version") == content::limits::sceneVersion) {
+                auto t = readTransform(effective);
+                if (tool == Viewport::Tool::Rotate) {
+                    const auto* parent = compiledNode(effective.value("parent", ""));
+                    const auto p = parent ? parent->transform : MeshTransform{};
+                    auto world = compose(p, t);
+                    world.rotation = Rotation3::axisAngle(delta, amount) * world.rotation;
+                    t = relativeTransform(p, world);
+                    clearEffective(candidate, "yaw");
+                    for (const auto& [key, value] : writeTransform(t).items())
+                        candidate.setProperty(selected_, key, value);
+                } else
+                    candidate.setProperty(selected_, "scale",
+                                          ContentValue::array({t.scale * t.scaleAxes.x * amount,
+                                                               t.scale * t.scaleAxes.y * amount,
+                                                               t.scale * t.scaleAxes.z * amount}));
+            } else if (tool == Viewport::Tool::Rotate) {
+                if (delta.x != 0 || delta.z != 0)
+                    throw std::runtime_error("Free-axis rotation requires a DCMO 3 scene copy");
                 candidate.setProperty(selected_, "yaw", effective.value("yaw", 0.0) + amount);
-            else if (tool == Viewport::Tool::Scale)
+            } else
                 candidate.setProperty(selected_, "scale", effective.value("scale", 1.0) * amount);
             commitNodes(candidate.nodes(), tr("Transform Object"), selected_);
         } catch (const std::exception& error) {
@@ -982,13 +1081,14 @@ class Window final : public QMainWindow {
         if (!current_ || selected_.empty())
             return;
         auto candidate = *current_;
-        for (const auto key : {"position", "yaw", "scale"})
+        for (const auto key : {"position", "yaw", "rotation", "basis", "scale"})
             candidate.setProperty(selected_, key, {});
         auto nodes = candidate.nodes();
         for (auto& node : nodes)
             if (node.at("id") == selected_ && node.contains("remove")) {
                 std::erase_if(node["remove"].elements(), [](const ContentValue& name) {
-                    return name == "position" || name == "yaw" || name == "scale";
+                    return name == "position" || name == "yaw" || name == "rotation" ||
+                           name == "basis" || name == "scale";
                 });
                 if (node.at("remove").empty())
                     node.erase("remove");

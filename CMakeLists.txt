@@ -38,7 +38,7 @@ add_library(paper_render STATIC src/render/scene.cpp src/render/mesh.cpp src/ren
 paper_target(paper_render)
 add_library(Paper::Render ALIAS paper_render)
 add_library(paper_resources STATIC src/resources/resource_store.cpp src/resources/model.cpp
-    src/resources/gltf.cpp src/scenes/scene.cpp)
+    src/resources/gltf.cpp src/scenes/scene.cpp src/scenes/transforms.cpp)
 paper_target(paper_resources)
 target_link_libraries(paper_resources PUBLIC Paper::Render PRIVATE paper_stb paper_cgltf Paper::Content)
 add_library(Paper::Resources ALIAS paper_resources)
@@ -62,14 +62,15 @@ target_link_libraries(paper_runtime PUBLIC Paper::Diagnostics Paper::GPU Paper::
 add_library(Paper::Runtime ALIAS paper_runtime)
 add_library(paper_authoring STATIC src/authoring/document.cpp)
 paper_target(paper_authoring)
-target_link_libraries(paper_authoring PUBLIC Paper::Content PRIVATE paper_toml)
+target_link_libraries(paper_authoring PUBLIC Paper::Content Paper::Resources PRIVATE paper_toml)
 add_library(Paper::Authoring ALIAS paper_authoring)
 if(PAPER_BUILD_EDITOR)
     add_subdirectory(editor)
 endif()
 if(PAPER_BUILD_TESTS)
     enable_testing()
-    foreach(pair IN ITEMS "document;content/document_tests.cpp;Paper::Content"
+    foreach(pair IN ITEMS "transforms;scenes/transform_tests.cpp;Paper::Authoring"
+            "document;content/document_tests.cpp;Paper::Content"
             "authoring;authoring/document_tests.cpp;Paper::Authoring"
             "diagnostics;engine_debug_tests.cpp;Paper::Diagnostics"
             "utf8;core/utf8_tests.cpp;Paper::Core"

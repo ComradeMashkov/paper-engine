@@ -6,7 +6,7 @@ namespace paper::content {
 namespace limits {
 inline constexpr size_t fileBytes = 64 * 1024 * 1024;
 inline constexpr size_t nesting = 64, values = 2 * 1024 * 1024;
-inline constexpr int sceneVersion = 2;
+inline constexpr int sceneVersion = 3, legacySceneVersion = 2;
 } // namespace limits
 [[nodiscard]] ContentValue parse(std::string_view source, std::string_view name);
 [[nodiscard]] ContentValue read(const std::filesystem::path& path);

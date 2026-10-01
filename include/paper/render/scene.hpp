@@ -74,8 +74,31 @@ struct MeshTransform {
     Vec3 position;
     Rotation3 rotation;
     float scale = 1;
-    [[nodiscard]] Vec3 point(Vec3 value) const {
-        return position + rotation.unit().apply(value * scale);
+    Vec3 scaleAxes{1, 1, 1};
+    Linear3 basis{};
+    [[nodiscard]] Linear3 linear() const {
+        const auto q = rotation.unit();
+        return {q.apply(basis.x * (scale * scaleAxes.x)), q.apply(basis.y * (scale * scaleAxes.y)),
+                q.apply(basis.z * (scale * scaleAxes.z))};
+    }
+    [[nodiscard]] Vec3 point(Vec3 value) const { return position + linear().apply(value); }
+    [[nodiscard]] Vec3 vector(Vec3 value) const { return linear().apply(value); }
+    [[nodiscard]] Vec3 inversePoint(Vec3 value) const {
+        return linear().inverse().apply(value - position);
+    }
+    [[nodiscard]] Vec3 normal(Vec3 value) const {
+        return normalized(linear().inverse().transposed().apply(value));
+    }
+    [[nodiscard]] bool valid() const {
+        const auto m = linear();
+        const float q = rotation.w * rotation.w + rotation.x * rotation.x +
+                        rotation.y * rotation.y + rotation.z * rotation.z;
+        return finite3(position) && finite3(m.x) && finite3(m.y) && finite3(m.z) &&
+               finite3(scaleAxes) && std::isfinite(scale) && scale > 0 && scaleAxes.x > 0 &&
+               scaleAxes.y > 0 && scaleAxes.z > 0 && std::isfinite(q) && q > 0 &&
+               std::isfinite(m.determinant()) && m.determinant() > 0 &&
+               m.determinant() / (length(m.x) * length(m.y) * length(m.z)) >
+                   geometryTolerance::affineRelativeDeterminant;
     }
 };
 struct MeshInstance {
