@@ -16,16 +16,20 @@ bool Engine::poll() {
     input_.releasedKey = 0;
     input_.dx = 0;
     input_.dy = 0;
+    input_.wheelY = 0;
     input_.focusLost = false;
     input_.focusGained = false;
     input_.windowModeChanged = false;
+    float motionX = 0, motionY = 0;
     SDL_Event e{};
     while (SDL_PollEvent(&e)) {
         if (e.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED)
             refreshCanvas();
         // Preserve raw relative motion for the camera before logical UI conversion.
         if (e.type == SDL_EVENT_MOUSE_MOTION) {
+            motionX += e.motion.xrel;
             input_.dx += e.motion.xrel;
+            motionY += e.motion.yrel;
             input_.dy += e.motion.yrel;
         }
         if (!headless_)
@@ -45,6 +49,12 @@ bool Engine::poll() {
             captureMouse(false);
         }
         auto debugEvent = e;
+        if (e.type == SDL_EVENT_MOUSE_WHEEL) {
+            input_.wheelY = e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -e.wheel.y : e.wheel.y;
+            input_.x = e.wheel.mouse_x - canvasOffset_.x;
+            input_.y = e.wheel.mouse_y - canvasOffset_.y;
+            input_.recordEvent();
+        }
         if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP) {
             debugEvent.button.x -= canvasOffset_.x;
             debugEvent.button.y -= canvasOffset_.y;
@@ -54,6 +64,7 @@ bool Engine::poll() {
         if (e.type == SDL_EVENT_MOUSE_MOTION) {
             input_.x = e.motion.x - canvasOffset_.x;
             input_.y = e.motion.y - canvasOffset_.y;
+            input_.recordEvent();
         }
         if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT) {
             input_.click = true;
@@ -86,6 +97,8 @@ bool Engine::poll() {
         if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP)
             input_.recordEvent();
     }
+    input_.dx = motionX;
+    input_.dy = motionY;
     int count = 0;
     const bool* keys = SDL_GetKeyboardState(&count);
     input_.held.fill(false);

@@ -50,3 +50,11 @@ literal_sha256 = "e360fbe21fda432a8a45967d590f23d743b831d3bf7492b843ae818ee5e248
 ["tests/editor/audio_bank_tests.cpp"]
 reason = "Independent editable source bytes and temporary-file scenarios exercise no-op/comment preservation, invalid edits and external-change protection without launching a game."
 literal_sha256 = "7df9c0c4617fa42da373dcd6bfbd364c3b083887a77c173870f745a2790579b4"
+
+["tests/ui/ui_tests.cpp"]
+reason = "Independent logical-pixel, text-width, input-coordinate and slider/list fixtures verify flex bounds, clipping, wrapped height, capture/focus, scroll visibility and transactional layout."
+literal_sha256 = "93b4044651d5b0b3fd8d43c6e145439ec44bf262c7ed0aa7e0ced87ae1914f27"
+
+["tests/ui/input_tests.cpp"]
+reason = "Independent ordered SDL edge/modifier/wheel samples verify host-to-UI event translation, repeat and focus/debug cancellation without constructing an application."
+literal_sha256 = "18464475ff35e0769c3045cabd089c728adeb6099212722452038c2ee8bae808"

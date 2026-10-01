@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.0-alpha.1+build.9] - 2026-10-01
+
+- Add shared panels, labels, buttons, toggles, sliders, lists and tooltips with a
+  host-measured, device-independent row/column layout system.
+- Add constrained grow/shrink allocation, alignment, padding, wrapping, nested
+  clipping, scrolling, focus navigation, pointer capture and bounded tree validation.
+- Publish tree/layout changes transactionally; retain the previous valid state
+  on failure. Render only visible list rows and preserve host clipping.
+- Add Engine drawing/input adapters with ordered wheel/motion/key edges while
+  retaining aggregate relative camera motion. Host menu adoption stays explicit.
+- Verification: Release UI/runtime/editor compiled; layout, wrap, constraints,
+  capture, focus, keyboard/list/slider, disabled/hidden states, rollback and
+  ordered host-input adapter regressions passed. See docs/UI.md for usage.
+
 ## [0.7.0-alpha.1+build.8] - 2026-10-01
 
 - Add editable TOML audio banks, validated source instances and oriented acoustic

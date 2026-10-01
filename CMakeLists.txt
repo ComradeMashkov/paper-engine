@@ -68,6 +68,13 @@ add_library(paper_authoring STATIC src/authoring/document.cpp)
 paper_target(paper_authoring)
 target_link_libraries(paper_authoring PUBLIC Paper::Content Paper::Resources PRIVATE paper_toml)
 add_library(Paper::Authoring ALIAS paper_authoring)
+add_library(paper_ui STATIC src/ui/ui.cpp)
+paper_target(paper_ui)
+add_library(Paper::UI ALIAS paper_ui)
+add_library(paper_ui_render STATIC src/ui/paint.cpp)
+paper_target(paper_ui_render)
+target_link_libraries(paper_ui_render PUBLIC Paper::UI Paper::Runtime)
+add_library(Paper::UIRender ALIAS paper_ui_render)
 if(PAPER_BUILD_TESTS)
     enable_testing()
 endif()
@@ -79,6 +86,8 @@ if(PAPER_BUILD_TESTS)
     foreach(pair IN ITEMS "transforms;scenes/transform_tests.cpp;Paper::Authoring"
             "physics;physics/world_tests.cpp;Paper::Physics"
             "audio_bank;audio/bank_tests.cpp;Paper::Audio"
+            "ui;ui/ui_tests.cpp;Paper::UI"
+            "ui_input;ui/input_tests.cpp;Paper::UIRender"
             "document;content/document_tests.cpp;Paper::Content"
             "authoring;authoring/document_tests.cpp;Paper::Authoring"
             "diagnostics;engine_debug_tests.cpp;Paper::Diagnostics"
