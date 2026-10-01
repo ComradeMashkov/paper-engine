@@ -307,6 +307,23 @@ class Window final : public QMainWindow {
         connect(shadow_, &QCheckBox::clicked, this,
                 [this](bool checked) { editProperty("shadow", checked); });
         form->addRow(shadow_);
+        collision_ = new QCheckBox(tr("Collision"));
+        collision_->setObjectName("nodeCollision");
+        collisionShape_ = new QComboBox;
+        collisionShape_->addItems({tr("Bounds"), tr("Static mesh")});
+        collisionShape_->setObjectName("collisionShape");
+        collisionCategory_ = new QLineEdit;
+        collisionCategory_->setObjectName("collisionCategory");
+        collisionMask_ = new QLineEdit;
+        collisionMask_->setObjectName("collisionMask");
+        form->addRow(collision_);
+        form->addRow(tr("Collider shape"), collisionShape_);
+        form->addRow(tr("Category bits"), collisionCategory_);
+        form->addRow(tr("Mask bits"), collisionMask_);
+        connect(collision_, &QCheckBox::clicked, this, [this] { editCollision(); });
+        connect(collisionShape_, &QComboBox::activated, this, [this] { editCollision(); });
+        for (auto* field : {collisionCategory_, collisionMask_})
+            connect(field, &QLineEdit::editingFinished, this, [this] { editCollision(); });
         auto* reset = new QPushButton(tr("Reset Transform to Template"));
         connect(reset, &QPushButton::clicked, this, [this] { resetTransform(); });
         form->addRow(reset);
@@ -687,6 +704,12 @@ class Window final : public QMainWindow {
         parent_->setEnabled(available);
         resource_->setEnabled(available);
         shadow_->setEnabled(available);
+        collision_->setEnabled(available);
+        const bool structured =
+            available && current_->data().at("version") == content::limits::sceneVersion;
+        collisionShape_->setEnabled(structured);
+        collisionCategory_->setEnabled(structured);
+        collisionMask_->setEnabled(structured);
         duplicate_->setEnabled(available);
         remove_->setEnabled(available);
         name_->clear();
@@ -708,6 +731,15 @@ class Window final : public QMainWindow {
                 resource_->addItem(text(id), text(id));
             resource_->setCurrentIndex(resource_->findData(text(effective.value("resource", ""))));
             shadow_->setChecked(effective.value("shadow", true));
+            const auto c = effective.value("collision", ContentValue(false));
+            const bool object = c.is_object();
+            collision_->setChecked(object || (c.is_boolean() && c.get<bool>()));
+            collisionShape_->setCurrentIndex(
+                object && c.value("shape", std::string("bounds")) == "mesh" ? 1 : 0);
+            collisionCategory_->setText(
+                QString::number(object ? c.value("category", uint32_t{1}) : 1));
+            collisionMask_->setText(
+                QString::number(object ? c.value("mask", ~uint32_t{0}) : ~uint32_t{0}));
         }
         if (available) {
             const auto node = project_->effective(current_->node(selected_));
@@ -884,6 +916,33 @@ class Window final : public QMainWindow {
             problem(text(error.what()));
             inspect();
         }
+    }
+    void editCollision() {
+        if (updating_ || !current_ || selected_.empty())
+            return;
+        if (!collision_->isChecked()) {
+            editProperty("collision", false);
+            return;
+        }
+        if (current_->data().at("version") == content::limits::legacySceneVersion) {
+            editProperty("collision", true);
+            return;
+        }
+        bool categoryOk = false, maskOk = false;
+        const auto category = collisionCategory_->text().toULongLong(&categoryOk),
+                   mask = collisionMask_->text().toULongLong(&maskOk);
+        if (!categoryOk || !maskOk || category == 0 ||
+            category > std::numeric_limits<uint32_t>::max() ||
+            mask > std::numeric_limits<uint32_t>::max()) {
+            problem(tr("Collision layers require decimal 32-bit bitsets and a nonzero category"));
+            inspect();
+            return;
+        }
+        editProperty(
+            "collision",
+            ContentValue{{"shape", collisionShape_->currentIndex() == 0 ? "bounds" : "mesh"},
+                         {"category", static_cast<uint32_t>(category)},
+                         {"mask", static_cast<uint32_t>(mask)}});
     }
     void editProperty(std::string_view name, const ContentValue& value) {
         if (updating_ || !current_ || selected_.empty())
@@ -1294,6 +1353,9 @@ class Window final : public QMainWindow {
     QComboBox* parent_ = nullptr;
     QComboBox* resource_ = nullptr;
     QCheckBox* shadow_ = nullptr;
+    QCheckBox* collision_ = nullptr;
+    QComboBox* collisionShape_ = nullptr;
+    QLineEdit *collisionCategory_ = nullptr, *collisionMask_ = nullptr;
     ResourceBrowser* assets_ = nullptr;
     QAction* duplicate_ = nullptr;
     QAction* remove_ = nullptr;

@@ -38,3 +38,7 @@ literal_sha256 = "bff30bd378f3a7ba96349ef0e3bec0b159e457f8d10ef7831cb5d0ccc9908f
 ["tests/scenes/transform_tests.cpp"]
 reason = "Independent analytic rotation, anisotropic normal, sheared hierarchy, inverse ray-distance and authored quaternion/scale fixtures; not engine defaults."
 literal_sha256 = "f54d42bcc34225fbad12b32eb810e40865c61d8b546fd9708d791400b42dcaf3"
+
+["tests/physics/world_tests.cpp"]
+reason = "Independent metre/time/layer fixtures verify steps, steep slopes, clearance, continuous sweeps, scene rollback, capacity and malformed inputs without depending on implementation defaults."
+literal_sha256 = "63d8916e62e8447e78d99ba061692060ef55ca357e0a4b607c31818e7f34fd4a"

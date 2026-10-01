@@ -111,7 +111,9 @@ struct Loader {
                 std::function<void(const Value&)> legacyCheck = [&](const Value& value) {
                     if (value.is_object()) {
                         require(!value.contains("rotation") && !value.contains("basis") &&
-                                    (!value.contains("scale") || !value.at("scale").is_array()),
+                                    (!value.contains("scale") || !value.at("scale").is_array()) &&
+                                    (!value.contains("collision") ||
+                                     !value.at("collision").is_object()),
                                 "Free transforms require an explicit DCMO 3 migration");
                         for (const auto& [key, child] : value.items())
                             legacyCheck(child);
@@ -493,8 +495,30 @@ std::shared_ptr<ScenePackage> loadScenes(const std::filesystem::path& root,
             n.visibleWhen = j.value("visibleWhen", std::string{});
             n.actions = j.contains("actions") ? id(j.at("actions")) : "";
             n.itemInstance = j.contains("itemInstance") ? id(j.at("itemInstance")) : "";
-            n.collidable = j.value("collision", false);
-            require((!n.collidable && n.kind.empty()) || j.contains("bounds"),
+            if (j.contains("collision") && j.at("collision").is_object()) {
+
+                const auto& collision = j.at("collision");
+                keys(collision, {"shape", "category", "mask"});
+                const auto shape = collision.value("shape", std::string("bounds"));
+                require(shape == "bounds" || shape == "mesh", "Unknown collider shape");
+                n.meshCollision = shape == "mesh";
+                n.collidable = true;
+                auto bits = [&](const char* key, uint32_t fallback) {
+                    if (!collision.contains(key))
+                        return fallback;
+                    const auto& v = collision.at(key);
+                    require(v.is_number_integer(), "Collision layers must be integral");
+                    const auto i = v.get<int64_t>();
+                    require(i >= 0 && i <= std::numeric_limits<uint32_t>::max(),
+                            "Collision layers out of range");
+                    return static_cast<uint32_t>(i);
+                };
+                n.collisionCategory = bits("category", 1);
+                n.collisionMask = bits("mask", ~uint32_t{0});
+                require(n.collisionCategory != 0, "Collision category cannot be empty");
+            } else
+                n.collidable = j.value("collision", false);
+            require(((!n.collidable || n.meshCollision) && n.kind.empty()) || j.contains("bounds"),
                     "physical node needs bounds: " + name);
             n.acoustic = j.value("acoustic", false);
             n.shadow = j.value("shadow", true);
@@ -510,6 +534,10 @@ std::shared_ptr<ScenePackage> loadScenes(const std::filesystem::path& root,
                 n.poses.push_back(l.asset(id(pose)));
             n.pose = j.value("pose", size_t{0});
             require(n.pose == 0 || n.pose < n.poses.size(), "pose index out of range: " + name);
+            require(!n.meshCollision ||
+                        (n.asset && !n.asset->billboard && (n.asset->mesh || n.asset->model) &&
+                         j.value("animation", -1) == -1),
+                    "Mesh collision requires a static geometry resource");
             n.animation = j.value("animation", -1);
             require(n.animation == -1 ||
                         (n.asset && n.asset->model && n.animation >= 0 &&

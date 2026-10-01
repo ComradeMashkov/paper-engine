@@ -42,6 +42,10 @@ add_library(paper_resources STATIC src/resources/resource_store.cpp src/resource
 paper_target(paper_resources)
 target_link_libraries(paper_resources PUBLIC Paper::Render PRIVATE paper_stb paper_cgltf Paper::Content)
 add_library(Paper::Resources ALIAS paper_resources)
+add_library(paper_physics STATIC src/physics/world.cpp src/physics/scene.cpp)
+paper_target(paper_physics)
+target_link_libraries(paper_physics PUBLIC Paper::Resources PRIVATE Jolt)
+add_library(Paper::Physics ALIAS paper_physics)
 add_library(paper_gpu STATIC src/render/gpu_renderer.cpp)
 paper_target(paper_gpu)
 target_link_libraries(paper_gpu PUBLIC Paper::Render SDL3::SDL3-static)
@@ -70,6 +74,7 @@ endif()
 if(PAPER_BUILD_TESTS)
     enable_testing()
     foreach(pair IN ITEMS "transforms;scenes/transform_tests.cpp;Paper::Authoring"
+            "physics;physics/world_tests.cpp;Paper::Physics"
             "document;content/document_tests.cpp;Paper::Content"
             "authoring;authoring/document_tests.cpp;Paper::Authoring"
             "diagnostics;engine_debug_tests.cpp;Paper::Diagnostics"
@@ -86,6 +91,7 @@ if(PAPER_BUILD_TESTS)
         target_link_libraries(paper_${name}_tests PRIVATE ${dependency})
         add_test(NAME paper_${name} COMMAND paper_${name}_tests)
     endforeach()
+    target_compile_definitions(paper_physics_tests PRIVATE PAPER_EXAMPLE_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/examples/boxes/assets")
     target_link_libraries(paper_authoring_tests PRIVATE Paper::Resources)
     target_compile_definitions(paper_authoring_tests PRIVATE PAPER_EXAMPLE_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/examples/boxes/assets")
     target_include_directories(paper_resources_tests SYSTEM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/vendor")

@@ -14,10 +14,12 @@ not select a new license for project code. Third-party licenses remain in force.
 | cgltf | 1.15, vendor/cgltf.h | licenses/cgltf-LICENSE.txt, MIT |
 | stb | f0569113c93ad095470c54bf34a17b36646bbbb5 | licenses/stb-LICENSE.txt; terms in headers |
 | nlohmann/json | 3.12.0, external glTF test mutation only | licenses/nlohmann-json-LICENSE.txt, MIT |
+| Jolt Physics | 5.6.0, vendor/JoltPhysics-5.6.0.tar.gz | licenses/JoltPhysics-LICENSE.txt, MIT |
 | Qt | system Qt 6.9+ Widgets/Concurrent, dynamically linked for editor only | Not vendored; retain provider notices when distributing |
 
 Archive/header hashes:
 
+- Jolt Physics: 6e069ee0172478cc78182047aac87e5310ba14a67a53348ae14cc37801fd3f8e
 - SDL: b68381f06a7580e63400b3b6eb547ec57d8c3ebde70f9f40e0aba530ba05da27
 - cgltf: e378a21c084bf1f288bb799de827bb26906efb024255f1ecf1705ea13f11c6ec
 - toml++: 6b5172ad4dd6519aec67b919181fa7a38a2234131e5b2afa232dfe444819783e

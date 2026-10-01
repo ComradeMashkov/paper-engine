@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0-alpha.1+build.7] - 2026-10-01
+
+- Add a pinned Jolt-backed collision world and swept character capsules with stairs,
+  slope limits, gravity, jump, floor snap, crouching and stand-up clearance.
+- Add symmetric 32-bit collision layers, stable handles and bounded owner-thread APIs.
+- Bind exact box/static mesh geometry from DCMO 3 scenes transactionally; expose
+  shape/category/mask in the editor through its validated Undo pipeline.
+- Verification: Release engine/editor targets compiled; physics regressions passed
+  for stairs, slopes, jump, ceilings, sliding, thin-wall sweep, layers, invalid
+  settings, capacity and scene-loader rollback. Existing authoring tests passed.
+- Limits: static terrain and virtual characters; no rigid-body dynamics or
+  collisions between virtual characters. See docs/PHYSICS.md for API bounds.
+
 ## [0.5.0-alpha.1+build.6] - 2026-10-01
 
 - Add DCMO 3 quaternion rotation, axis scale and exact affine hierarchy transforms.

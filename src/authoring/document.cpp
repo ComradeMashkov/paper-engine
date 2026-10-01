@@ -103,7 +103,7 @@ void SceneDocument::setProperty(std::string_view id, std::string_view name,
     const bool transform = name == "position" || name == "yaw" || name == "scale" ||
                            name == "rotation" || name == "basis";
     require(transform || name == "label" || name == "resource" || name == "parent" ||
-                name == "shadow",
+                name == "shadow" || name == "collision",
             "Property is not editable");
     const auto validNumber = [](const ContentValue& v) {
         return v.is_number() && std::isfinite(v.get<double>()) &&
@@ -116,6 +116,10 @@ void SceneDocument::setProperty(std::string_view id, std::string_view name,
             auto transformValue = ContentValue::object();
             transformValue[std::string(name)] = value;
             (void)readTransform(transformValue);
+        } else if (name == "collision") {
+            require(value.is_boolean() ||
+                        (data_.at("version") == content::limits::sceneVersion && value.is_object()),
+                    "Invalid collider override");
         } else if (name == "shadow")
             require(value.is_boolean(), "Expected shadow switch");
         else if (!transform)
