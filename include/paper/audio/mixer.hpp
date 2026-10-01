@@ -37,6 +37,7 @@ struct AudioScene {
     std::array<Box3, audioParameters::maximumBarriers> barriers{};
     size_t barrierCount = 0;
     bool active = false, paused = false, focused = true;
+    float reverbWet = 1, reverbFeedback = audioParameters::echoFeedbackGain, reverbDamping = 0;
 };
 struct SpatialMix {
     float left, right, obstruction;
@@ -101,6 +102,7 @@ class AudioMixer {
     std::uint32_t seed_ = 92831;
     float master_ = 1, currentMaster_ = 0, worldGain_ = 0, eventGain_ = 1, duck_ = 1, limiter_ = 1;
     float dcLeft_ = 0, dcRight_ = 0;
+    float echoFilteredLeft_ = 0, echoFilteredRight_ = 0;
     bool muted_ = false;
 };
 } // namespace paper

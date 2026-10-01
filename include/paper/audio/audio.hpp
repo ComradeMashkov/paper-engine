@@ -6,11 +6,18 @@
 #include <memory>
 
 namespace paper {
+struct AudioFrame;
+struct AudioBankDefinition;
+// Strict decoding/validation without opening an audio device. All declared variants must load.
+[[nodiscard]] SoundBank loadSoundBank(const std::filesystem::path& assets,
+                                      const AudioBankDefinition& bank);
 // Main-thread facade. The SDL stream lock serializes mixer commands with its callback.
 class Audio {
   public:
     explicit Audio(bool muted) noexcept : forcedMute_(muted) {}
     void open(const std::filesystem::path& assets, std::span<const SoundDefinition> definitions);
+    void openBank(const std::filesystem::path& assets, const AudioBankDefinition& bank);
+    void apply(const AudioFrame& frame) noexcept;
     void play(SoundId effect, SoundPlacement placement = {}) noexcept;
     void stop(SoundId effect) noexcept;
     void stopWorld() noexcept;
@@ -27,6 +34,7 @@ class Audio {
 
   private:
     static void SDLCALL feed(void* userdata, SDL_AudioStream* stream, int additional, int total);
+    void openMixer(std::unique_ptr<AudioMixer> mixer);
     void disable(const char* operation);
     bool muted_ = false, forcedMute_ = false;
     std::atomic<bool> callbackFailed_{false};

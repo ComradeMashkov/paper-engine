@@ -54,6 +54,13 @@ AudioMixer::AudioMixer(std::span<const SoundDefinition> definitions, SoundBank b
       nextPlay_(definitions.size()), lastVariant_(definitions.size(), static_cast<size_t>(-1)) {
     if (definitions_.size() > maximumSounds || bank_.size() != definitions_.size())
         throw std::invalid_argument("Invalid audio bank size");
+    for (const auto& variants : bank_)
+        for (const auto& pcm : variants)
+            if (pcm.size() > static_cast<size_t>(sampleRate) * maximumSourceSeconds ||
+                !std::ranges::all_of(pcm, [](float sample) {
+                    return std::isfinite(sample) && std::abs(sample) <= 1;
+                }))
+                throw std::invalid_argument("Invalid audio PCM");
     std::set<std::string> ids;
     for (const auto& definition : definitions_)
         if (definition.id.empty() || !ids.insert(definition.id).second ||
@@ -80,6 +87,11 @@ void AudioMixer::setScene(const AudioScene& scene) noexcept {
         stopWorld();
     scene_ = scene;
     scene_.barrierCount = std::min(scene.barrierCount, scene.barriers.size());
+    constexpr float maximumStableFeedback = .95f;
+    scene_.reverbWet = unit(scene.reverbWet);
+    scene_.reverbFeedback = std::min(unit(scene.reverbFeedback), maximumStableFeedback);
+    constexpr float maximumStableDamping = .99f;
+    scene_.reverbDamping = std::min(unit(scene.reverbDamping), maximumStableDamping);
 }
 void AudioMixer::setMix(float master, const std::array<float, busCount>& volumes) noexcept {
     master_ = unit(master);
@@ -355,11 +367,13 @@ void AudioMixer::render(std::span<float> stereo) noexcept {
         const size_t lpos = echoPosition_ % echoLeft_.size(),
                      rpos = echoPosition_ % echoRight_.size();
         const float echoL = echoLeft_[lpos], echoR = echoRight_[rpos];
-        echoLeft_[lpos] = wetLeft + echoR * echoFeedbackGain;
-        echoRight_[rpos] = wetRight + echoL * echoFeedbackGain;
+        echoFilteredLeft_ += (echoL - echoFilteredLeft_) * (1 - scene_.reverbDamping);
+        echoFilteredRight_ += (echoR - echoFilteredRight_) * (1 - scene_.reverbDamping);
+        echoLeft_[lpos] = wetLeft + echoFilteredRight_ * scene_.reverbFeedback;
+        echoRight_[rpos] = wetRight + echoFilteredLeft_ * scene_.reverbFeedback;
         ++echoPosition_;
-        left += echoL;
-        right += echoR;
+        left += echoL * scene_.reverbWet;
+        right += echoR * scene_.reverbWet;
         dcLeft_ += dcRemovalPerSample * (left - dcLeft_);
         dcRight_ += dcRemovalPerSample * (right - dcRight_);
         left = (left - dcLeft_) * currentMaster_;

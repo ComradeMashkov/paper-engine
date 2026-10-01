@@ -50,9 +50,9 @@ add_library(paper_gpu STATIC src/render/gpu_renderer.cpp)
 paper_target(paper_gpu)
 target_link_libraries(paper_gpu PUBLIC Paper::Render SDL3::SDL3-static)
 add_library(Paper::GPU ALIAS paper_gpu)
-add_library(paper_audio STATIC src/audio/mixer.cpp src/audio/audio.cpp)
+add_library(paper_audio STATIC src/audio/mixer.cpp src/audio/audio.cpp src/audio/bank.cpp)
 paper_target(paper_audio)
-target_link_libraries(paper_audio PUBLIC Paper::Core SDL3::SDL3-static)
+target_link_libraries(paper_audio PUBLIC Paper::Core Paper::Content Paper::Resources SDL3::SDL3-static)
 add_library(Paper::Audio ALIAS paper_audio)
 find_package(Threads REQUIRED)
 add_library(paper_diagnostics STATIC src/debug/diagnostics.cpp)
@@ -68,6 +68,9 @@ add_library(paper_authoring STATIC src/authoring/document.cpp)
 paper_target(paper_authoring)
 target_link_libraries(paper_authoring PUBLIC Paper::Content Paper::Resources PRIVATE paper_toml)
 add_library(Paper::Authoring ALIAS paper_authoring)
+if(PAPER_BUILD_TESTS)
+    enable_testing()
+endif()
 if(PAPER_BUILD_EDITOR)
     add_subdirectory(editor)
 endif()
@@ -75,6 +78,7 @@ if(PAPER_BUILD_TESTS)
     enable_testing()
     foreach(pair IN ITEMS "transforms;scenes/transform_tests.cpp;Paper::Authoring"
             "physics;physics/world_tests.cpp;Paper::Physics"
+            "audio_bank;audio/bank_tests.cpp;Paper::Audio"
             "document;content/document_tests.cpp;Paper::Content"
             "authoring;authoring/document_tests.cpp;Paper::Authoring"
             "diagnostics;engine_debug_tests.cpp;Paper::Diagnostics"

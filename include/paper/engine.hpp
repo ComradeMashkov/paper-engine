@@ -30,6 +30,7 @@ struct EngineConfig {
     bool profile = false;
     // Explicit content snapshots must never fall back to bundled/source assets.
     bool exactAssetRoot = false;
+    std::filesystem::path audioBankFile;
 };
 struct FrameTimings {
     RenderStats world;

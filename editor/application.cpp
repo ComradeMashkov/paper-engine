@@ -1,4 +1,5 @@
 #include "paper/editor/application.hpp"
+#include "audio_bank_editor.hpp"
 #include "paper/authoring/document.hpp"
 #include "paper/content/document.hpp"
 #include "paper/scenes/transforms.hpp"
@@ -391,6 +392,25 @@ class Window final : public QMainWindow {
         auto* exit = file->addAction(tr("Close"));
         exit->setShortcut(QKeySequence::Quit);
         connect(exit, &QAction::triggered, this, &QWidget::close);
+        auto* audioBank = file->addAction(tr("Edit Audio Bank…"));
+        audioBank->setObjectName("editAudioBank");
+        connect(audioBank, &QAction::triggered, this, [this] {
+            if (!project_) {
+                problem(tr("Open a project before editing its audio bank"));
+                return;
+            }
+            const auto file =
+                QFileDialog::getOpenFileName(this, tr("Open Audio Bank"), pathText(project_->root),
+                                             tr("Audio Bank (*.pabank *.toml)"));
+            if (file.isEmpty())
+                return;
+            try {
+                AudioBankEditor dialog(filePath(file), project_->root, this);
+                dialog.exec();
+            } catch (const std::exception& e) {
+                problem(text(e.what()));
+            }
+        });
         auto* edit = menuBar()->addMenu(tr("Edit"));
         auto* undo = undo_.createUndoAction(this, tr("Undo"));
         undo->setObjectName("undo");

@@ -42,3 +42,11 @@ literal_sha256 = "f54d42bcc34225fbad12b32eb810e40865c61d8b546fd9708d791400b42dca
 ["tests/physics/world_tests.cpp"]
 reason = "Independent metre/time/layer fixtures verify steps, steep slopes, clearance, continuous sweeps, scene rollback, capacity and malformed inputs without depending on implementation defaults."
 literal_sha256 = "63d8916e62e8447e78d99ba061692060ef55ca357e0a4b607c31818e7f34fd4a"
+
+["tests/audio/bank_tests.cpp"]
+reason = "Independent source/zone positions, capacity counts, hand-authored RIFF PCM bytes, resampling range, malformed replacements and echo-decay thresholds verify the bank contract independently of defaults."
+literal_sha256 = "e360fbe21fda432a8a45967d590f23d743b831d3bf7492b843ae818ee5e248e6"
+
+["tests/editor/audio_bank_tests.cpp"]
+reason = "Independent editable source bytes and temporary-file scenarios exercise no-op/comment preservation, invalid edits and external-change protection without launching a game."
+literal_sha256 = "7df9c0c4617fa42da373dcd6bfbd364c3b083887a77c173870f745a2790579b4"

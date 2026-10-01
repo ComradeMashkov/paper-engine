@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0-alpha.1+build.8] - 2026-10-01
+
+- Add editable TOML audio banks, validated source instances and oriented acoustic
+  zones with priority, boundary fade, ambience and stable reverb profiles.
+- Resolve source offsets through full scene transforms and submit bounded loop/scene
+  snapshots under one stream lock; keep allocation and I/O outside the PCM callback.
+- Validate all declared WAV variants and PCM budgets before replacing live audio.
+  Add optional runtime bank configuration and a source-preserving bank editor with
+  strict validation, Undo/Redo, atomic Save and external-change protection.
+- Verification: Release audio/runtime/editor compiled; bank/source/zone, loop-capacity,
+  strict WAV/dummy-device replacement, echo-decay and offscreen editor-save tests passed.
+- Limits: banks reload explicitly; no editor audition or automatic live reload.
+
 ## [0.6.0-alpha.1+build.7] - 2026-10-01
 
 - Add a pinned Jolt-backed collision world and swept character capsules with stairs,

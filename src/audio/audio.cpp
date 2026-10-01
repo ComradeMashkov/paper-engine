@@ -1,4 +1,5 @@
 #include "paper/audio/audio.hpp"
+#include "paper/audio/bank.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -23,8 +24,10 @@ class StreamLock {
   private:
     SDL_AudioStream* stream_;
 };
-SoundBank loadBank(const std::filesystem::path& root,
-                   std::span<const SoundDefinition> definitions) {
+SoundBank loadBank(const std::filesystem::path& root, std::span<const SoundDefinition> definitions,
+                   bool strict = false) {
+    constexpr size_t maximumBankBytes = 256u * 1024u * 1024u;
+    size_t loadedBytes = 0;
     SoundBank bank(definitions.size());
     for (size_t id = 0; id < definitions.size(); ++id) {
         const auto& definition = definitions[id];
@@ -32,17 +35,31 @@ SoundBank loadBank(const std::filesystem::path& root,
             const auto path =
                 root / "audio" /
                 (std::string(definition.file) + "-" + std::to_string(variant) + ".wav");
+            auto failure = [&](const char* reason) {
+                if (strict)
+                    throw std::invalid_argument(std::string(reason) + ": " + path.string());
+            };
+            if (strict) {
+                const auto audioRoot = std::filesystem::canonical(root / "audio");
+                const auto canonical = std::filesystem::canonical(path);
+                const auto relative = canonical.lexically_relative(audioRoot);
+                if (relative.empty() || relative.is_absolute() || *relative.begin() == ".." ||
+                    std::filesystem::file_size(canonical) > maximumSourceBytes)
+                    failure("Invalid audio path/size");
+            }
             SDL_AudioSpec source{};
             Uint8* bytes = nullptr;
             Uint32 length = 0;
             if (!SDL_LoadWAV(path.string().c_str(), &source, &bytes, &length)) {
                 SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "Missing sound %s: %s", path.string().c_str(),
                             SDL_GetError());
+                failure("Invalid or missing WAV");
                 continue;
             }
             sdl::Owner<Uint8, SDL_free> sourceData(bytes);
             if (length > maximumSourceBytes) {
                 SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "Sound too large: %s", path.string().c_str());
+                failure("Invalid or missing WAV");
                 continue;
             }
             SDL_AudioSpec target{};
@@ -59,6 +76,7 @@ SoundBank loadBank(const std::filesystem::path& root,
                 size > AudioMixer::sampleRate * maximumSourceSeconds *
                            static_cast<int>(sizeof(float))) {
                 SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "Invalid sound: %s", path.string().c_str());
+                failure("Invalid or missing WAV");
                 continue;
             }
             std::vector<float> samples(static_cast<size_t>(size) / sizeof(float));
@@ -72,12 +90,16 @@ SoundBank loadBank(const std::filesystem::path& root,
             }
             if (!valid) {
                 SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "Non-finite sound: %s", path.string().c_str());
+                failure("Invalid or missing WAV");
                 continue;
             }
             // Replacements retain quieter mastering; unexpectedly loud files cannot spike.
             if (peak > loadedPeakCeiling)
                 for (float& value : samples)
                     value *= loadedPeakCeiling / peak;
+            if (samples.size() * sizeof(float) > maximumBankBytes - loadedBytes)
+                throw std::invalid_argument("Decoded audio bank exceeds PCM budget");
+            loadedBytes += samples.size() * sizeof(float);
             bank[id].push_back(std::move(samples));
         }
     }
@@ -90,15 +112,19 @@ void Audio::disable(const char* operation) {
 }
 void Audio::open(const std::filesystem::path& assets,
                  std::span<const SoundDefinition> definitions) {
-    stream_.reset();
-    mixer_.reset();
     auto bank = loadBank(assets, definitions);
     if (std::all_of(bank.begin(), bank.end(),
                     [](const auto& variants) { return variants.empty(); })) {
+        stream_.reset();
+        mixer_.reset();
         SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "No usable audio assets; audio disabled");
         return;
     }
-    mixer_ = std::make_unique<AudioMixer>(definitions, std::move(bank));
+    openMixer(std::make_unique<AudioMixer>(definitions, std::move(bank)));
+}
+void Audio::openMixer(std::unique_ptr<AudioMixer> mixer) {
+    stream_.reset();
+    mixer_ = std::move(mixer);
     mixer_->setMuted(muted());
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
         disable("Initialize audio");
@@ -133,6 +159,26 @@ void SDLCALL Audio::feed(void* userdata, SDL_AudioStream* stream, int additional
 void Audio::play(SoundId effect, SoundPlacement placement) noexcept {
     if (StreamLock lock(stream_.get()); lock)
         mixer_->play(effect, placement);
+}
+SoundBank loadSoundBank(const std::filesystem::path& assets, const AudioBankDefinition& bank) {
+    validateAudioBank(bank);
+    return loadBank(assets, bank.sounds, true);
+}
+void Audio::openBank(const std::filesystem::path& assets, const AudioBankDefinition& bank) {
+    auto pcm = loadSoundBank(assets, bank);
+    openMixer(std::make_unique<AudioMixer>(bank.sounds, std::move(pcm)));
+}
+void Audio::apply(const AudioFrame& frame) noexcept {
+    if (callbackFailed_) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "Audio callback could not queue PCM; audio disabled");
+        stream_.reset();
+        return;
+    }
+    if (StreamLock lock(stream_.get()); lock) {
+        mixer_->setScene(frame.scene);
+        for (size_t slot = 0; slot < frame.loops.size(); ++slot)
+            mixer_->loop(slot, frame.loops[slot].sound, frame.loops[slot].placement);
+    }
 }
 void Audio::stop(SoundId effect) noexcept {
     if (StreamLock lock(stream_.get()); lock)

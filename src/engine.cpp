@@ -1,4 +1,6 @@
 #include "paper/engine.hpp"
+#include "paper/audio/bank.hpp"
+#include "paper/resources/resource_store.hpp"
 #include "paper/assets/image.hpp"
 #include "paper/core/pixel_format.hpp"
 #include "paper/core/units.hpp"
@@ -84,8 +86,14 @@ Engine::Engine(const EngineConfig& config)
         assetPath_ /
             (config.handwrittenFontFile.empty() ? config.fontFile : config.handwrittenFontFile));
     refreshCanvas();
-    if (!headless_)
-        audio_.open(assetPath_, config.sounds);
+    if (!headless_) {
+        if (config.audioBankFile.empty())
+            audio_.open(assetPath_, config.sounds);
+        else {
+            ResourceStore files(assetPath_);
+            audio_.openBank(assetPath_, loadAudioBank(files.resolve(config.audioBankFile)));
+        }
+    }
     diagnostics_.addCommand(
         "renderer", "Show backend, VSync and world resolution", [this](std::string_view) {
             const auto size = worldRenderSize();
