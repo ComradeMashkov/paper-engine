@@ -1,0 +1,53 @@
+format = "paper.ui"
+version = 1
+
+[ui]
+root = "settings"
+viewport = [640, 480]
+
+[[ui.nodes]]
+id = "settings"
+kind = "panel"
+direction = "column"
+gap = 12.0
+padding = [24.0, 24.0, 24.0, 24.0]
+scroll = true
+
+[[ui.nodes]]
+id = "title"
+parent = "settings"
+kind = "label"
+text = "Paper Engine — Settings"
+
+[[ui.nodes]]
+id = "sound"
+parent = "settings"
+kind = "toggle"
+text = "Sound enabled"
+checked = true
+tooltip = "Enable or disable sound"
+
+[[ui.nodes]]
+id = "volume"
+parent = "settings"
+kind = "slider"
+minimum = 0.0
+maximum = 1.0
+step = 0.05
+value = 0.7
+tooltip = "Master volume"
+
+[[ui.nodes]]
+id = "quality"
+parent = "settings"
+kind = "list"
+items = ["Low", "Medium", "High"]
+value = 2.0
+[ui.nodes.height]
+preferred = 96.0
+
+[[ui.nodes]]
+id = "apply"
+parent = "settings"
+kind = "button"
+text = "Apply Settings"

@@ -1,4 +1,5 @@
 #pragma once
+#include "paper/audio/bank.hpp"
 #include "paper/render/gpu_renderer.hpp"
 #include "paper/render/spatial.hpp"
 #include "paper/scenes/scene.hpp"
@@ -23,6 +24,8 @@ class Viewport final : public QWidget {
     void tool(Tool tool);
     void grid(bool enabled) { grid_ = enabled; }
     void snap(bool enabled) { snap_ = enabled; }
+    void collisions(bool enabled) { collisions_ = enabled; }
+    void audio(std::optional<AudioBankDefinition> bank) { audio_ = std::move(bank); }
     void rotationAxis(Vec3 axis) {
         cancelDrag();
         rotationAxis_ = axis;
@@ -85,12 +88,14 @@ class Viewport final : public QWidget {
     std::vector<MeshInstance> dragInstances_;
     std::set<std::string> dragIds_;
     std::string selectedId_;
+    std::string sceneId_;
+    std::optional<AudioBankDefinition> audio_;
     Tool tool_ = Tool::Move;
     int dragAxis_ = -1;
     QSet<int> keys_;
     QElapsedTimer elapsed_;
     bool navigating_ = false, panning_ = false, orbiting_ = false, unavailable_ = false;
-    bool grid_ = false, snap_ = false;
+    bool grid_ = false, snap_ = false, collisions_ = false;
     bool editable_ = true;
     size_t frames_ = 0;
 };

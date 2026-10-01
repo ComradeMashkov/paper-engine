@@ -2,9 +2,13 @@
 #include "audio_bank_editor.hpp"
 #include "paper/authoring/document.hpp"
 #include "paper/content/document.hpp"
+#include "paper/physics/scene.hpp"
 #include "paper/scenes/transforms.hpp"
 #include "play_controller.hpp"
+#include "project_migration.hpp"
+#include "property_form.hpp"
 #include "resource_browser.hpp"
+#include "ui_editor.hpp"
 #include "viewport.hpp"
 #include "workspace.hpp"
 #include <QActionGroup>
@@ -192,7 +196,21 @@ PreviewResult compile(const fs::path& root, const fs::path& manifest, SceneDocum
             }
         }
         std::vector<std::string_view> names(owned.begin(), owned.end());
-        return {loadScenes(root, std::move(materials), names, manifest, documents), {}};
+        auto package = loadScenes(root, std::move(materials), names, manifest, documents);
+        std::set<std::string> collisionScenes;
+        for (const auto& node : package->nodes)
+            if (node.collidable)
+                collisionScenes.insert(node.scene);
+        for (const auto& scene : collisionScenes) {
+            PhysicsLimits limits;
+            limits.bodies =
+                static_cast<unsigned>(std::ranges::count_if(package->nodes, [&](const auto& node) {
+                    return node.collidable && node.scene == scene;
+                }));
+            PhysicsWorld world(limits);
+            (void)addSceneColliders(world, *package, scene);
+        }
+        return {std::move(package), {}};
     } catch (const std::exception& error) {
         return {{}, error.what()};
     }
@@ -305,6 +323,20 @@ class Window final : public QMainWindow {
             form->addRow(labels[i], spin);
             connect(spin, &QDoubleSpinBox::editingFinished, this, [this, i] { change(i); });
         }
+        const std::array<QString, 3> angleLabels{tr("Local pitch X, °"), tr("Local yaw Y, °"),
+                                                 tr("Local roll Z, °")};
+        for (size_t i = 0; i < euler_.size(); ++i) {
+            auto* field = euler_[i] = new QDoubleSpinBox;
+            field->setObjectName(QString("rotationDegrees%1").arg(i));
+            field->setDecimals(transformDecimals);
+            constexpr double fullTurnDegrees = units::degreesPerHalfTurn * 2;
+            field->setRange(-fullTurnDegrees, fullTurnDegrees);
+            field->setKeyboardTracking(false);
+            field->setToolTip(tr("Local rotation in degrees, applied in Y × X × Z order. "
+                                 "Quaternion storage retains free rotation."));
+            form->addRow(angleLabels[i], field);
+            connect(field, &QDoubleSpinBox::editingFinished, this, [this] { changeEuler(); });
+        }
         auto* hint = new QLabel(tr("Coordinates are local to the parent. Editing creates "
                                    "an explicit template override."));
         hint->setWordWrap(true);
@@ -326,6 +358,10 @@ class Window final : public QMainWindow {
         form->addRow(tr("Collider shape"), collisionShape_);
         form->addRow(tr("Category bits"), collisionCategory_);
         form->addRow(tr("Mask bits"), collisionMask_);
+        boundsButton_ = new QPushButton(tr("Edit Collider Bounds…"));
+        boundsButton_->setObjectName("editColliderBounds");
+        form->addRow(boundsButton_);
+        connect(boundsButton_, &QPushButton::clicked, this, [this] { editBounds(); });
         connect(collision_, &QCheckBox::clicked, this, [this](bool checked) {
             if (checked)
                 editCollision();
@@ -359,6 +395,7 @@ class Window final : public QMainWindow {
             panel->show();
             panel->raise();
         };
+        assets_->openAsset = [this](const fs::path& path) { editAsset(project_->root / path); };
         dock(tr("Project"), "assets", assets_, Qt::BottomDockWidgetArea);
         problems_ = new QListWidget;
         problems_->setObjectName("projectProblems");
@@ -414,9 +451,57 @@ class Window final : public QMainWindow {
                                              tr("Audio Bank (*.pabank *.toml)"));
             if (file.isEmpty())
                 return;
+            editAsset(filePath(file));
+        });
+        auto* uiFile = file->addAction(tr("Edit UI…"));
+        uiFile->setObjectName("editUi");
+        connect(uiFile, &QAction::triggered, this, [this] {
+            if (!project_)
+                return;
+            const auto path = QFileDialog::getOpenFileName(
+                this, tr("Open UI"), pathText(project_->root), tr("Paper UI (*.pui)"));
+            if (!path.isEmpty())
+                editAsset(filePath(path));
+        });
+        for (const auto& [name, title, extension] :
+             std::initializer_list<std::tuple<const char*, QString, const char*>>{
+                 {"newUi", tr("New UI…"), ".pui"},
+                 {"newAudioBank", tr("New Audio Bank…"), ".pabank"}}) {
+            auto* action = file->addAction(title);
+            action->setObjectName(name);
+            connect(action, &QAction::triggered, this,
+                    [this, extension, title] { newAsset(extension, title); });
+        }
+        auto* upgrade = file->addAction(tr("Upgrade Project Copy for Free Transforms…"));
+        upgrade->setObjectName("upgradeProject");
+        connect(upgrade, &QAction::triggered, this, [this] {
+            if (!project_ || play_->active())
+                return;
+            const auto choice = QFileDialog::getSaveFileName(
+                this, tr("New Project Folder"),
+                pathText(project_->file.parent_path().parent_path() /
+                         (project_->file.parent_path().filename().string() + "-v3")),
+                tr("Project folder"));
+            if (choice.isEmpty())
+                return;
             try {
-                AudioBankEditor dialog(filePath(file), project_->root, this);
-                dialog.exec();
+                // Resolve asset Save/Discard before copying, so later saves cannot leave
+                // the new project with older UI or audio content.
+                if (!closeAssetEditors())
+                    return;
+                project_->verifySources();
+                const auto file =
+                    migrateProject(project_->file, filePath(choice), project_->snapshot(),
+                                   [this](const fs::path& file) {
+                                       Project candidate(file, false);
+                                       const auto checked =
+                                           compile(candidate.root, candidate.manifest,
+                                                   candidate.snapshot(), options_);
+                                       if (!checked.package)
+                                           throw std::runtime_error(checked.error);
+                                       project_->verifySources();
+                                   });
+                openProject(file);
             } catch (const std::exception& e) {
                 problem(text(e.what()));
             }
@@ -518,6 +603,8 @@ class Window final : public QMainWindow {
         auto* modes = new QActionGroup(this);
         const std::array<QString, 4> titles{tr("Select"), tr("Move"), tr("Rotate"), tr("Scale")};
         auto* rotationAxis = new QComboBox;
+        rotationAxis_ = rotationAxis;
+        rotationAxis->setObjectName("worldRotationAxis");
         rotationAxis->setAccessibleName(tr("World rotation axis"));
         rotationAxis->addItems({tr("Rotate X"), tr("Rotate Y"), tr("Rotate Z")});
         rotationAxis->setCurrentIndex(1);
@@ -526,6 +613,15 @@ class Window final : public QMainWindow {
             constexpr std::array<Vec3, 3> axes{Vec3{1, 0, 0}, Vec3{0, 1, 0}, Vec3{0, 0, 1}};
             viewport_->rotationAxis(axes.at(static_cast<size_t>(index)));
         });
+        auto* colliders = tools->addAction(tr("Collisions"));
+        colliders->setObjectName("showCollisions");
+        colliders->setCheckable(true);
+        colliders->setToolTip(
+            tr("Show collider bounds; selected mesh colliders show their triangles"));
+        connect(colliders, &QAction::toggled, viewport_, &Viewport::collisions);
+        auto* hideAudio = tools->addAction(tr("Hide Audio Overlays"));
+        hideAudio->setObjectName("hideAudioOverlays");
+        connect(hideAudio, &QAction::triggered, this, [this] { viewport_->audio(std::nullopt); });
         const std::array<int, 4> shortcuts{Qt::Key_Q, Qt::Key_W, Qt::Key_E, Qt::Key_R};
         for (size_t i = 0; i < titles.size(); ++i) {
             auto* action = tools->addAction(titles[i]);
@@ -605,6 +701,10 @@ class Window final : public QMainWindow {
 
   protected:
     void closeEvent(QCloseEvent* event) override {
+        if (!closeAssetEditors()) {
+            event->ignore();
+            return;
+        }
         if (!closeAfterStop_ && !confirmChanges()) {
             event->ignore();
             return;
@@ -623,6 +723,175 @@ class Window final : public QMainWindow {
     }
 
   private:
+    void editAsset(const fs::path& path) {
+        if (!project_)
+            return;
+        try {
+            if (pathText(path.extension()).compare(".pui", Qt::CaseInsensitive) == 0) {
+                if (uiEditor_ && !uiEditor_->close())
+                    return;
+                uiEditor_ = std::make_unique<UiEditor>(path, project_->root, this);
+                uiEditor_->show();
+                uiEditor_->raise();
+            } else {
+                if (audioEditor_ && !audioEditor_->close())
+                    return;
+                audioEditor_ = std::make_unique<AudioBankEditor>(path, project_->root, this);
+                auto& dialog = *audioEditor_;
+                std::vector<std::string> nodes;
+                for (const auto& node : package_->nodes)
+                    nodes.push_back(node.id);
+                dialog.sceneNodes(std::move(nodes));
+                dialog.currentSceneNodes = [this] {
+                    std::vector<std::string> catalog;
+                    for (const auto& [scenePath, document] : project_->scenes)
+                        for (const auto& node : document->nodes())
+                            catalog.push_back(node.at("id").get<std::string>());
+                    return catalog;
+                };
+                dialog.previewChanged = [this](std::optional<AudioBankDefinition> bank) {
+                    viewport_->audio(std::move(bank));
+                };
+                dialog.closed = [this, path] {
+                    try {
+                        viewport_->audio(loadAudioBank(path));
+                        populateAssets();
+                    } catch (const std::exception& e) {
+                        viewport_->audio(std::nullopt);
+                        problem(text(e.what()));
+                    }
+                };
+                dialog.preview();
+                dialog.show();
+                dialog.raise();
+            }
+            populateAssets();
+        } catch (const std::exception& e) {
+            viewport_->audio(std::nullopt);
+            problem(text(e.what()));
+        }
+    }
+    bool closeAssetEditors() {
+        for (QDialog* dialog :
+             {static_cast<QDialog*>(uiEditor_.get()), static_cast<QDialog*>(audioEditor_.get())})
+            if (dialog && dialog->isVisible() && !dialog->close())
+                return false;
+        uiEditor_.reset();
+        audioEditor_.reset();
+        return true;
+    }
+    ContentValue defaultBounds() const {
+        Box3 bounds{{}, {1, 1, 1}};
+        const auto node = std::ranges::find(package_->nodes, selected_, &SceneNode::id);
+        if (node != package_->nodes.end() && node->asset) {
+            if (node->asset->mesh)
+                bounds = meshBounds(*node->asset->mesh);
+            else if (node->asset->model) {
+                bool found = false;
+                for (const auto& instance : node->asset->model->sample()) {
+                    const auto part = worldBounds(meshBounds(*instance.mesh), instance.transform);
+                    bounds = found ? unionBounds(bounds, part) : part;
+                    found = true;
+                }
+            }
+        }
+        for (float* extent : {&bounds.half.x, &bounds.half.y, &bounds.half.z})
+            *extent = std::max(*extent, sceneLimits::minimumExtentMeters);
+        return ContentValue{
+            {"center", ContentValue::array({bounds.center.x, bounds.center.y, bounds.center.z})},
+            {"half", ContentValue::array({bounds.half.x, bounds.half.y, bounds.half.z})}};
+    }
+    void editBounds() {
+        if (!current_ || selected_.empty())
+            return;
+        QDialog dialog(this);
+        dialog.setWindowTitle(tr("Collider Bounds"));
+        auto* layout = new QVBoxLayout(&dialog);
+        auto* form = new PropertyForm;
+        const auto effective = project_->effective(current_->node(selected_));
+        ContentValue value;
+        if (effective.contains("bounds"))
+            value = effective.at("bounds");
+        else
+            value = defaultBounds();
+        if (!value.contains("yaw") && !value.contains("rotation"))
+            value["yaw"] = 0.0;
+        if (value.contains("yaw"))
+            value["yaw"] = value.at("yaw").get<double>();
+        if (current_->data().at("version") == content::limits::sceneVersion) {
+            const auto q = value.contains("rotation")
+                               ? readRotation(value.at("rotation"))
+                               : Rotation3::axisAngle({0, 1, 0}, value.at("yaw").get<float>());
+            value.erase("yaw");
+            value["rotation"] = ContentValue::array({q.x, q.y, q.z, q.w});
+        }
+        form->setValue(value);
+        layout->addWidget(new QLabel(tr("Local center and half extents in metres; rotation uses "
+                                        "quaternion XYZW or legacy yaw radians.")));
+        layout->addWidget(form);
+        auto* status = new QLabel;
+        status->setWordWrap(true);
+        layout->addWidget(status);
+        auto* apply = new QPushButton(tr("Apply"));
+        apply->setObjectName("applyColliderBounds");
+        layout->addWidget(apply);
+        connect(apply, &QPushButton::clicked, &dialog, [this, &dialog, form, status] {
+            try {
+                auto candidate = *current_;
+                candidate.setProperty(selected_, "bounds", form->value());
+                auto snapshot = project_->snapshot();
+                for (const auto& [path, doc] : project_->scenes)
+                    if (doc == current_)
+                        snapshot[path] = candidate.data();
+                const auto checked =
+                    compile(project_->root, project_->manifest, snapshot, options_);
+                if (!checked.package)
+                    throw std::runtime_error(checked.error);
+                (void)candidate.serialized();
+                commitNodes(candidate.nodes(), tr("Change Collider Bounds"), selected_);
+                dialog.accept();
+            } catch (const std::exception& e) {
+                status->setText(text(e.what()));
+            }
+        });
+        dialog.exec();
+    }
+    void newAsset(const std::string& extension, const QString& title) {
+        if (!project_)
+            return;
+        const auto choice = QFileDialog::getSaveFileName(
+            this, title, pathText(project_->root / ("new" + extension)),
+            tr("Paper asset") + " (*" + text(extension) + ")");
+        if (choice.isEmpty())
+            return;
+        try {
+            auto path = filePath(choice);
+            if (path.extension().empty())
+                path += extension;
+            if (path.extension() != extension)
+                throw std::runtime_error("Incorrect asset extension");
+            ResourceStore files(project_->root);
+            path = files.resolve(fs::weakly_canonical(path).lexically_relative(project_->root));
+            ui::Document document;
+            document.root.id = "root";
+            const auto output =
+                extension == ".pui" ? ui::writeDocument(document) : writeAudioBank({});
+            QFile file(pathText(path));
+            if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly))
+                throw std::runtime_error("Choose a new asset filename inside the project");
+            if (file.write(output.data(), static_cast<qint64>(output.size())) !=
+                    static_cast<qint64>(output.size()) ||
+                !file.flush()) {
+                file.close();
+                file.remove();
+                throw std::runtime_error("Cannot write new asset");
+            }
+            file.close();
+            editAsset(path);
+        } catch (const std::exception& e) {
+            problem(text(e.what()));
+        }
+    }
     static constexpr size_t yawField = 3, scaleField = 4, quaternionField = 5, axisScaleField = 9,
                             propertyCount = 12;
     void dock(QString title, QString name, QWidget* contents, Qt::DockWidgetArea area) {
@@ -651,11 +920,14 @@ class Window final : public QMainWindow {
             if (!preview.package)
                 throw std::runtime_error(preview.error);
             candidate->verifySources();
+            if (!closeAssetEditors())
+                return;
             if (same)
                 candidate->lock = std::move(project_->lock);
             ++revision_;
             undo_.clear();
             project_ = std::move(candidate);
+            viewport_->audio(std::nullopt);
             package_ = std::move(preview.package);
             publishedRevision_ = revision_;
             problems_->clear();
@@ -737,9 +1009,17 @@ class Window final : public QMainWindow {
         collision_->setEnabled(available);
         const bool structured =
             available && current_->data().at("version") == content::limits::sceneVersion;
+        for (auto* field : euler_)
+            field->setEnabled(structured);
+        if (rotationAxis_) {
+            rotationAxis_->setEnabled(structured);
+            if (!structured)
+                rotationAxis_->setCurrentIndex(1);
+        }
         collisionShape_->setEnabled(structured);
         collisionCategory_->setEnabled(structured);
         collisionMask_->setEnabled(structured);
+        boundsButton_->setEnabled(available);
         duplicate_->setEnabled(available);
         remove_->setEnabled(available);
         name_->clear();
@@ -780,6 +1060,20 @@ class Window final : public QMainWindow {
             const auto t = readTransform(node);
             fields_[scaleField]->setValue(t.scale);
             const auto q = t.rotation.unit();
+            const auto x = q.apply({1, 0, 0}), y = q.apply({0, 1, 0}), z = q.apply({0, 0, 1});
+            constexpr float gimbalTolerance = .00001f;
+            const auto projected = std::hypot(z.x, z.z);
+            const bool locked = projected < gimbalTolerance;
+            constexpr float quarterTurnRadians = pi3 / 2;
+            const auto pitch =
+                locked ? std::copysign(quarterTurnRadians, -z.y) : std::atan2(-z.y, projected);
+            const std::array<float, 3> angles{pitch,
+                                              locked ? std::atan2(-x.z, x.x) : std::atan2(z.x, z.z),
+                                              locked ? 0.f : std::atan2(x.y, y.y)};
+            for (size_t i = 0; i < angles.size(); ++i) {
+                euler_[i]->setValue(angles[i] * units::degreesPerHalfTurn / pi3);
+                displayedEuler_[i] = euler_[i]->value();
+            }
             const std::array<double, 4> components{q.x, q.y, q.z, q.w};
             const std::array<double, 3> scales{t.scaleAxes.x * t.scale, t.scaleAxes.y * t.scale,
                                                t.scaleAxes.z * t.scale};
@@ -842,6 +1136,32 @@ class Window final : public QMainWindow {
                 }
             }
             commitNodes(candidate.nodes(), tr("Change Transform"), selected_);
+        } catch (const std::exception& e) {
+            problem(text(e.what()));
+            inspect();
+        }
+    }
+    void changeEuler() {
+        if (updating_ || !current_ || selected_.empty() ||
+            current_->data().at("version") != content::limits::sceneVersion)
+            return;
+        bool changed = false;
+        for (size_t i = 0; i < euler_.size(); ++i)
+            changed |= euler_[i]->value() != displayedEuler_[i];
+        if (!changed)
+            return;
+        try {
+            const auto angle = [&](size_t index) {
+                return static_cast<float>(euler_[index]->value() * pi3 / units::degreesPerHalfTurn);
+            };
+            const auto q = (Rotation3::axisAngle({0, 1, 0}, angle(1)) *
+                            Rotation3::axisAngle({1, 0, 0}, angle(0)) *
+                            Rotation3::axisAngle({0, 0, 1}, angle(2)))
+                               .unit(); // numbers: Euler component order is pitch, yaw, roll.
+            auto candidate = *current_;
+            clearEffective(candidate, "yaw");
+            candidate.setProperty(selected_, "rotation", ContentValue::array({q.x, q.y, q.z, q.w}));
+            commitNodes(candidate.nodes(), tr("Change Rotation"), selected_);
         } catch (const std::exception& e) {
             problem(text(e.what()));
             inspect();
@@ -952,10 +1272,7 @@ class Window final : public QMainWindow {
             return;
         if (!collision_->isChecked())
             return;
-        if (current_->data().at("version") == content::limits::legacySceneVersion) {
-            editProperty("collision", true);
-            return;
-        }
+        const bool legacy = current_->data().at("version") == content::limits::legacySceneVersion;
         bool categoryOk = false, maskOk = false;
         const auto category = collisionCategory_->text().toULongLong(&categoryOk),
                    mask = collisionMask_->text().toULongLong(&maskOk);
@@ -966,11 +1283,23 @@ class Window final : public QMainWindow {
             inspect();
             return;
         }
-        editProperty(
-            "collision",
-            ContentValue{{"shape", collisionShape_->currentIndex() == 0 ? "bounds" : "mesh"},
-                         {"category", static_cast<uint32_t>(category)},
-                         {"mask", static_cast<uint32_t>(mask)}});
+        try {
+            auto candidate = *current_;
+            setEffectiveProperty(
+                candidate, "collision",
+                legacy ? ContentValue(true)
+                       : ContentValue{
+                             {"shape", collisionShape_->currentIndex() == 0 ? "bounds" : "mesh"},
+                             {"category", static_cast<uint32_t>(category)},
+                             {"mask", static_cast<uint32_t>(mask)}});
+            if ((legacy || collisionShape_->currentIndex() == 0) &&
+                !project_->effective(current_->node(selected_)).contains("bounds"))
+                setEffectiveProperty(candidate, "bounds", defaultBounds());
+            commitNodes(candidate.nodes(), tr("Change Collider"), selected_);
+        } catch (const std::exception& e) {
+            problem(text(e.what()));
+            inspect();
+        }
     }
     void editProperty(std::string_view name, const ContentValue& value) {
         if (updating_ || !current_ || selected_.empty())
@@ -1210,6 +1539,8 @@ class Window final : public QMainWindow {
         }
         viewport_->editingEnabled(true);
         package_ = result.package;
+        if (audioEditor_ && audioEditor_->currentSceneNodes)
+            audioEditor_->sceneNodes(audioEditor_->currentSceneNodes());
         publishedRevision_ = revision_;
         problems_->clear();
         if (!viewportError_.isEmpty())
@@ -1344,6 +1675,22 @@ class Window final : public QMainWindow {
                 input.expected[path] = document->original();
                 input.overrides[path] = document->serialized();
             }
+            if (uiEditor_ && uiEditor_->isVisible()) {
+                const auto path = uiEditor_->file().lexically_relative(project_->root);
+                input.expected[path] = uiEditor_->original();
+                input.overrides[path] = uiEditor_->snapshot();
+            }
+            if (audioEditor_ && audioEditor_->isVisible()) {
+                audioEditor_->stopAudition();
+                std::vector<std::string> nodes;
+                for (const auto& [path, document] : project_->scenes)
+                    for (const auto& node : document->nodes())
+                        nodes.push_back(node.at("id").get<std::string>());
+                audioEditor_->sceneNodes(std::move(nodes));
+                const auto path = audioEditor_->file().lexically_relative(project_->root);
+                input.expected[path] = audioEditor_->original();
+                input.overrides[path] = audioEditor_->snapshot();
+            }
             ResourceStore files(project_->root);
             auto world = content::parse(project_->sources.at(files.resolve(project_->manifest)),
                                         project_->manifest.string());
@@ -1384,6 +1731,8 @@ class Window final : public QMainWindow {
     QCheckBox* shadow_ = nullptr;
     QCheckBox* collision_ = nullptr;
     QComboBox* collisionShape_ = nullptr;
+    QPushButton* boundsButton_ = nullptr;
+    QComboBox* rotationAxis_ = nullptr;
     QLineEdit *collisionCategory_ = nullptr, *collisionMask_ = nullptr;
     ResourceBrowser* assets_ = nullptr;
     QAction* duplicate_ = nullptr;
@@ -1391,6 +1740,8 @@ class Window final : public QMainWindow {
     QString viewportError_;
     Options options_;
     std::unique_ptr<Project> project_;
+    std::unique_ptr<UiEditor> uiEditor_;
+    std::unique_ptr<AudioBankEditor> audioEditor_;
     std::shared_ptr<authoring::SceneDocument> current_;
     std::shared_ptr<ScenePackage> package_;
     Viewport* viewport_ = nullptr;
@@ -1401,6 +1752,8 @@ class Window final : public QMainWindow {
     QAction* save_ = nullptr;
     std::array<QDoubleSpinBox*, propertyCount> fields_{};
     std::array<double, propertyCount> displayed_{};
+    std::array<QDoubleSpinBox*, 3> euler_{};
+    std::array<double, 3> displayedEuler_{};
     std::map<std::string, QTreeWidgetItem*, std::less<>> items_;
     std::string selected_;
     QUndoStack undo_;

@@ -25,7 +25,7 @@ literal_sha256 = "bf442854e31d760b0fc7669a4efef2a02607a572c77f3ed5549fddb3badedd
 
 ["tests/editor/workspace_tests.cpp"]
 reason = "Independent native workspace geometry, quaternion/axis-scale and collider-bitset expectations, object counts, resource filters, unsaved Play snapshot/start point, Undo and asynchronous close on disposable project copies."
-literal_sha256 = "0788085c7529d4ea8276fe1730f409a1d5c62717a50ad88bd4ef80f1298fd8c6"
+literal_sha256 = "3c38c1aab80486a01bde96c1ae5405d820702d01cb765490228443f24b22a5ad"
 
 ["tests/editor/play_tests.cpp"]
 reason = "Independent process lifecycle fixtures: bounded event-loop waits and two runs verify snapshot isolation, cancellation, repeat, launch failure and escalation for an unresponsive test child."
@@ -61,4 +61,8 @@ literal_sha256 = "18464475ff35e0769c3045cabd089c728adeb6099212722452038c2ee8bae8
 
 ["tests/authoring/collision_tests.cpp"]
 reason = "Independent collider bitsets and nested/inline source-table fixtures verify editing, comment preservation, disable and Undo across Save without flattening authored metadata."
-literal_sha256 = "b2ca023a283e2b14c00421b64223420ba8b78a233530abf77ae428de29e44def"
+literal_sha256 = "6094a5b4fafca4c2894d969daf9b79a43eed61506fb537bdb1b2505b62d1cb06"
+
+["tests/editor/component_tests.cpp"]
+reason = "Independent Qt editor fixtures cover every UI component, exact untouched values, interactive preview isolation, pending draft validation, structured audio and WAV bytes, dummy-device audition, source guards and transactional project-copy migration."
+literal_sha256 = "17131805b0265565ad23af8394d3a534b27b80f4aa06ccbd86717590bfc09628"

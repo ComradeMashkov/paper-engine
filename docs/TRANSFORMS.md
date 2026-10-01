@@ -22,9 +22,21 @@ Shader model uniforms changed to seven float4 fields; rebuild CPU and shaders
 together. Imported glTF retains its documented selected subset; this change
 extends scene placement, not glTF import capabilities.
 
-The editor Inspector exposes quaternion XYZW and scale XYZ on v3 scenes, while
-v2 keeps its existing controls. The rotation tool selects a world X/Y/Z axis;
+The editor Inspector exposes local rotation XYZ in degrees, quaternion XYZW and
+scale XYZ on v3 scenes, while v2 keeps its existing controls. Degree controls use
+`R = Ry * Rx * Rz` and store a unit quaternion; at gimbal lock the displayed roll
+is zero. The rotation tool selects a world X/Y/Z axis;
 drag preview, snapped rotation, Undo and reparenting retain the complete mapping.
+
+File → Upgrade Project Copy for Free Transforms creates a new project directory
+containing only the descriptor and assets. Open UI/audio windows resolve their
+Save/Discard/Cancel choice before copying; canceled asset closure aborts migration.
+It includes unsaved scene documents,
+converts yaw/uniform scale and template removal lists, then validates the copied
+project and its physical collider geometry before publishing and opening it.
+The destination must not exist or lie inside the source; symlinks and special files
+are rejected. Failures remove staging data and leave the original untouched. Native
+documents are canonicalized in the copy; this editor action does not generate a patch.
 
 Explicit migration, including a reviewable diff and an untouched original:
 

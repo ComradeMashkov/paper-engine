@@ -16,7 +16,13 @@ Use triangle winding consistently; meshes represent surfaces, not solid volumes.
 
 DCMO 3 accepts `collision = { shape="bounds", category=1, mask=4294967295 }` or
 `shape="mesh"`. Boolean collision remains compatible in v2 and v3. The editor
-Inspector exposes shape and decimal bitsets on v3 scenes. Mesh collision requires
+Inspector exposes shape and decimal bitsets on v3 scenes. Bounds edits local center,
+half extents and orientation; initial bounds fit mesh/model geometry. Fractional
+metre values remain editable even when the source used integer literals. The
+Collisions toolbar overlay shows transformed green bounds, with exact triangles
+for the selected mesh collider. Candidate scene changes and Save construct physical
+colliders before publication, rejecting invalid geometry and budgets.
+Mesh collision requires
 a static, non-billboard geometry resource and uses its bind pose. Character and
 render poses share the full world transform. Call `addSceneColliders` for the
 selected scene; installation rolls back on failure. Remove the returned IDs when

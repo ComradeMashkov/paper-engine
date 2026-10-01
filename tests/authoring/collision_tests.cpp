@@ -38,6 +38,12 @@ int main() {
     inlineDoc.setProperty("box", "collision", false);
     check(content::parse(inlineDoc.serialized(), "inline collider fixture") == inlineDoc.data(),
           "inline collider can change back to boolean");
+    const auto bounds = ContentValue{{"center", ContentValue::array({1, 2, 3})},
+                                     {"half", ContentValue::array({2.5, 1, .5})},
+                                     {"rotation", ContentValue::array({0, 0, 0, 1})}};
+    inlineDoc.setProperty("box", "bounds", bounds);
+    check(content::parse(inlineDoc.serialized(), "collider bounds fixture") == inlineDoc.data(),
+          "collider bounds insertion round trips");
     std::cout << "collision authoring failures=" << failures << '\n';
     return failures ? 1 : 0;
 }

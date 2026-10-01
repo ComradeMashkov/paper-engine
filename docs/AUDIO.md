@@ -44,11 +44,26 @@ Device-open failures are reported through the existing disabled-audio behavior.
 Files cap at 32 MiB, decoded sounds at 60 seconds and the bank at 256 MiB PCM.
 Sources cap at 4096, zones at 256, sounds at 256, variants at 64.
 
-The editor's File → Edit Audio Bank opens a source editor with Undo/Redo,
-validation of every WAV, and atomic Save. Comments and no-op bytes remain intact;
+File → New Audio Bank / Edit Audio Bank and double-clicking `.pabank` files open
+a nonmodal editor. Structure provides sound/source/zone trees and batched property
+forms. Source bindings offer IDs from the current project; Save rejects missing
+node references. Choose WAV selects the first `stem-1.wav` inside `audio/`.
+Audition Selected validates every WAV and opens an explicit dry preview for a sound,
+source or zone ambience; Stop, applied edits, close and Play release its stream. Nothing plays
+automatically when opening a bank. Definitions do not change the running game.
+
+Source and structured edits share Undo/Redo, including across Save. No-op saves
+preserve exact bytes; source edits retain comments. Structured changes canonicalize
+the bank into one Undo step. Save validates every WAV and uses atomic replacement;
 external changes prevent overwriting and require reopening. Invalid definitions
-can be repaired before Save. Closing unsaved edits offers Save/Discard/Cancel.
-This editor changes bank content; it does not audition sounds or run the game.
+can be repaired in Source. Pending properties apply on Save or selection change;
+invalid edits stay in the form. Play includes the open bank's validated draft in
+its isolated asset copy. Closing unsaved edits offers Save/Discard/Cancel.
+
+Scene view displays blue oriented acoustic boxes, pink source markers and range
+circles while editing. Closing restores the saved bank overlay. Hide Audio Overlays
+clears it. Sources follow the selected scene's full node transforms; zones are
+world-space bank data. The example bank includes a short synthesized chime.
 
 `AudioBindings` owns an immutable bank and bounded loop slots. Authored sources
 are bound initially. `bind(instance, source, node)` creates another instance with

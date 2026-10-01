@@ -125,7 +125,7 @@ void SceneDocument::setProperty(std::string_view id, std::string_view name,
     const bool transform = name == "position" || name == "yaw" || name == "scale" ||
                            name == "rotation" || name == "basis";
     require(transform || name == "label" || name == "resource" || name == "parent" ||
-                name == "shadow" || name == "collision",
+                name == "shadow" || name == "collision" || name == "bounds",
             "Property is not editable");
     const auto validNumber = [](const ContentValue& v) {
         return v.is_number() && std::isfinite(v.get<double>()) &&
@@ -138,6 +138,26 @@ void SceneDocument::setProperty(std::string_view id, std::string_view name,
             auto transformValue = ContentValue::object();
             transformValue[std::string(name)] = value;
             (void)readTransform(transformValue);
+        } else if (name == "bounds") {
+            require(value.is_object() && value.contains("center") && value.contains("half"),
+                    "Expected collider bounds");
+            for (const auto key : {"center", "half"}) {
+                const auto& vector = value.at(key);
+                constexpr size_t components = 3;
+                require(vector.is_array() && vector.size() == components, "Expected collider XYZ");
+                for (const auto& v : vector)
+                    require(validNumber(v) &&
+                                (std::string_view(key) != "half" || v.get<double>() > 0),
+                            "Invalid collider coordinate/extent");
+            }
+            if (value.contains("rotation")) {
+                require(data_.at("version") == content::limits::sceneVersion &&
+                            !value.contains("yaw"),
+                        "Free collider rotation requires v3");
+                (void)readRotation(value.at("rotation"));
+            }
+            if (value.contains("yaw"))
+                require(validNumber(value.at("yaw")), "Invalid collider yaw");
         } else if (name == "collision") {
             require(value.is_boolean() ||
                         (data_.at("version") == content::limits::sceneVersion && value.is_object()),
@@ -247,7 +267,7 @@ std::string SceneDocument::serialized() const {
         require(table, "Expected source node table");
         std::string added;
         for (const auto name : {"position", "yaw", "rotation", "basis", "scale", "label",
-                                "resource", "parent", "shadow", "collision", "remove"}) {
+                                "resource", "parent", "shadow", "collision", "bounds", "remove"}) {
             const auto oldValue = before.contains(name) ? before.at(name) : ContentValue{};
             const auto newValue = after.contains(name) ? after.at(name) : ContentValue{};
             if (oldValue == newValue)

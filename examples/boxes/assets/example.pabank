@@ -1,0 +1,25 @@
+format = "paper.audio"
+version = 1
+
+[[bank.sounds]]
+id = "example.chime"
+file = "chime"
+bus = "effects"
+variants = 1
+gain = 0.5
+
+[[bank.sources]]
+id = "box.sound"
+sound = "example.chime"
+node = "box.parent"
+offset = [0.0, 1.0, 0.0]
+range = 5.0
+
+[[bank.zones]]
+id = "example.room"
+center = [0.0, 1.5, 4.0]
+half = [3.0, 1.5, 3.0]
+fade = 0.5
+wet = 0.6
+feedback = 0.25
+damping = 0.3

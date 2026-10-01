@@ -129,6 +129,7 @@ void Viewport::draw() {
 void Viewport::scene(std::shared_ptr<ScenePackage> package, std::string scene, bool resetCamera) {
     cancelDrag();
     package_ = std::move(package);
+    sceneId_ = scene;
     instances_.clear();
     instanceIds_.clear();
     queries_ = {};
@@ -476,6 +477,67 @@ void Viewport::overlay(int pixelWidth, int pixelHeight) {
         if (pa && pb)
             line2(*pa, *pb);
     };
+    const auto drawBox = [&](const Box3& bounds, const MeshTransform& transform) {
+        constexpr size_t cornerCount = 8;
+        std::array<Vec3, cornerCount> points;
+        for (size_t i = 0; i < cornerCount; ++i)
+            points[i] = transform.point(
+                bounds.center +
+                bounds.orientation().apply(
+                    {(i & 1) ? bounds.half.x : -bounds.half.x,
+                     (i & 2) ? bounds.half.y : -bounds.half.y,
+                     (i & 4) ? bounds.half.z : -bounds.half.z})); // numbers: XYZ corner bit layout.
+        for (size_t i = 0; i < cornerCount; ++i)
+            for (size_t bit : {1, 2, 4}) // numbers: connect each XYZ edge once.
+                if (!(i & bit))
+                    line(points[i], points[i | bit]);
+    };
+    if (package_ && collisions_) {
+        constexpr Pixel collisionColor{110, 230, 160};
+        SDL_SetRenderDrawColor(renderer_.get(), collisionColor.r, collisionColor.g,
+                               collisionColor.b, collisionColor.a);
+        for (const auto& node : package_->nodes) {
+            if (node.scene != sceneId_ || !node.collidable)
+                continue;
+            if (node.meshCollision && node.id == selectedId_) {
+                for (size_t i = 0; i < instances_.size(); ++i)
+                    if (instanceIds_[i] == node.id)
+                        for (const auto& triangle : *instances_[i].mesh)
+                            for (size_t edge = 0; edge < std::size(triangle.v); ++edge)
+                                line(instances_[i].transform.point(triangle.v[edge].p),
+                                     instances_[i].transform.point(
+                                         triangle.v[(edge + 1) % std::size(triangle.v)].p));
+            } else
+                drawBox(node.localBounds, node.transform);
+        }
+    }
+    if (package_ && audio_) {
+        constexpr Pixel zoneColor{120, 160, 255}, sourceColor{255, 140, 225};
+        SDL_SetRenderDrawColor(renderer_.get(), zoneColor.r, zoneColor.g, zoneColor.b, zoneColor.a);
+        for (const auto& zone : audio_->zones)
+            drawBox(zone.bounds, {});
+        SDL_SetRenderDrawColor(renderer_.get(), sourceColor.r, sourceColor.g, sourceColor.b,
+                               sourceColor.a);
+        for (const auto& source : audio_->sources) {
+            auto position = source.offset;
+            if (!source.node.empty()) {
+                const auto node = std::ranges::find(package_->nodes, source.node, &SceneNode::id);
+                if (node == package_->nodes.end() || node->scene != sceneId_)
+                    continue;
+                position = node->transform.point(source.offset);
+            }
+            constexpr float markerMeters = .2f;
+            for (const auto axis : axes)
+                line(position - axis * markerMeters, position + axis * markerMeters);
+            constexpr int segments = 32;
+            for (int i = 0; i < segments; ++i) {
+                const float a = 2 * pi3 * i / segments,
+                            b = 2 * pi3 * (i + 1) / segments; // numbers: circle revolution samples.
+                line(position + Vec3{std::cos(a), 0, std::sin(a)} * source.rangeMeters,
+                     position + Vec3{std::cos(b), 0, std::sin(b)} * source.rangeMeters);
+            }
+        }
+    }
     if (grid_) {
         constexpr Pixel color{80, 86, 95, 120};
         SDL_SetRenderDrawBlendMode(renderer_.get(), SDL_BLENDMODE_BLEND);

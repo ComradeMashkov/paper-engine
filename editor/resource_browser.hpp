@@ -27,6 +27,7 @@ class ResourceBrowser final : public QWidget {
     [[nodiscard]] std::string selectedResource() const;
     std::function<void(std::string)> instantiate;
     std::function<void(std::filesystem::path)> openScene;
+    std::function<void(std::filesystem::path)> openAsset;
     std::function<void()> floatPanel;
 
   private:

@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.9.0-alpha.1+build.11] - 2026-10-01
+
+- Expose collider bounds editing, initial fitting, category/mask authoring and
+  scene overlays; show exact triangles for the selected mesh collider.
+- Add local X/Y/Z rotation in degrees alongside quaternion/axis-scale controls.
+  Upgrade project copies to DCMO 3 in the editor, including unsaved scenes,
+  template removals and full project validation before publishing the copy.
+- Add structured audio sound/source/zone forms, scene-node choices, WAV selection,
+  explicit audition/Stop and source/range/oriented-zone overlays in Scene view.
+- Add versioned `.pui` assets and visual UI authoring: component hierarchy,
+  properties, reparent/reorder/duplicate/delete, theme/viewport and isolated
+  interactive preview using the shared layout, drawing and input system.
+- Preserve no-op/source edits; publish structured edits as single Undo steps,
+  retain exact untouched values and guard atomic saves against external changes.
+  Keep component windows nonmodal and add browser/menu actions and Boxes examples.
+- Include validated unsaved UI/audio drafts in isolated Play snapshots without
+  saving originals; validate source bindings against the current scene documents.
+- Verification on macOS: all 16 CTest cases passed in Release and ASan/UBSan,
+  including Metal. Native Boxes v2/v3 and an upgraded host project copy passed;
+  native v3 also passed under ASan/UBSan. Isolated Play lifecycle checks passed.
+  UI/audio test-window captures were visually inspected. Host game/editor builds
+  passed; the game was not launched.
+
 ## [0.8.1-alpha.1+build.10] - 2026-10-01
 
 - Fix collider source serialization and preserve nested-table comments, disable,

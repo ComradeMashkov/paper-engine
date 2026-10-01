@@ -9,7 +9,10 @@ The editor provides hierarchy, inspector, resource placement, create/delete/dupl
 reparent, world transform gizmos, camera controls, undo/redo and guarded TOML saving.
 Native Qt/GPU integration and editing/saving/reopening were tested on temporary
 macOS project copies. The Project browser has folders, category/search filters and
-a floating window.
+a floating window. The editor exposes collider bounds/layers and overlays, free
+rotation in degrees, structured audio banks with audition, and visual UI asset
+design with an interactive layout preview. The Boxes project includes
+`settings.pui` and `example.pabank`; double-click them in the Project browser.
 Host-configured Play/Stop uses isolated snapshots and temporary saves. Its process
 lifecycle is tested with a fixture; real-game Play acceptance, human usability,
 recovery and import UI are still outstanding. No game logic runs in Scene view. See [the editor contract](docs/EDITOR.md).

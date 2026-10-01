@@ -60,3 +60,46 @@ units map to configurable logical pixels. The renderer intersects each command
 with the host's existing clip and restores that clip on exit, including errors.
 Engine input retains aggregate relative camera motion while exposing ordered
 motion/wheel edges. Host game menus are migrated by the host, not by this library.
+
+## Assets and visual authoring
+
+`paper/ui/document.hpp` provides `Document`, `parseDocument`, `loadDocument`,
+`readDocument`, `documentValue` and `writeDocument`. `.pui` is TOML `paper.ui`
+version 1. `[ui]` declares `root`, `viewport` (logical width/height), optional
+`theme`, and ordered `[[ui.nodes]]` records. IDs are unique; `parent` references a
+panel. Exactly one root has an empty/omitted parent. Missing parents, cycles,
+unknown keys, malformed values and unsupported versions fail before publication.
+
+Nodes support `panel`, `label`, `button`, `toggle`, `slider`, `list`; text, tooltip,
+enabled/visible/checked, value/range/step, items and row/column layout. `width` and
+`height` tables declare minimum/preferred/maximum/grow/shrink; `maximum = "unlimited"`
+is explicit. Padding order is left/top/right/bottom. Theme colors use RGBA bytes.
+Assets cap at 4 MiB, 4096 nodes, 64 hierarchy levels, 100,000 list items, an 8192-pixel
+viewport axis and 128-pixel fonts. `examples/boxes/assets/settings.pui` is a complete
+six-kind example. Hosts load the tree/theme and choose their current viewport:
+
+```cpp
+auto screen = paper::ui::loadDocument(assets / "settings.pui");
+paper::ui::Context ui(paper::ui::engineMeasure(engine), screen.theme);
+ui.setTree(std::move(screen.root));
+ui.layout({0, 0, canvasWidth, canvasHeight});
+```
+
+File → New UI / Edit UI and Project → double-click `.pui` open a nonmodal design
+window. The palette adds components; hierarchy, Inspector, Duplicate/Delete and
+Up/Down edit the tree. Parent choices reparent panels and controls; validation
+rejects cycles and children on leaf controls. Renaming an ID updates child parents
+and the root reference. Theme / Viewport edits appearance and preview size.
+
+The preview draws the shared `Context` commands with Qt font measurement. Clicking
+in Design selects a visible component; Interact routes pointer, wheel and keyboard
+input into that same context. Preview actions/slider/toggle/list changes are isolated
+from authored values. Runtime uses the host's configured font and action handlers.
+
+Apply Properties commits one Undo step. Pending properties apply on selection
+change, Source switch, Save or Play; invalid drafts remain editable. Source and structure
+share Undo/Redo across Save. Structured changes use canonical TOML; source edits and
+no-op saves preserve their text/comments. Save/Ctrl+S validates actual preview
+layout, checks external changes and atomically replaces the file. Close offers
+Save/Discard/Cancel. Play includes the open document's validated draft in its
+isolated asset copy. The preview is authoring data, not host-game execution.
