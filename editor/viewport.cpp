@@ -511,6 +511,39 @@ void Viewport::overlay(int pixelWidth, int pixelHeight) {
                 drawBox(node.localBounds, node.transform);
         }
     }
+    if (package_ && sceneData_) {
+        constexpr Pixel roomColor{140, 180, 240}, transitionColor{255, 170, 90},
+            spawnColor{130, 240, 170}, lightColor{255, 240, 140};
+        const auto color = [&](Pixel pixel) {
+            SDL_SetRenderDrawColor(renderer_.get(), pixel.r, pixel.g, pixel.b, pixel.a);
+        };
+        color(roomColor);
+        for (const auto& room : package_->rooms)
+            if (room.scene == sceneId_)
+                drawBox(room.bounds, {});
+        color(transitionColor);
+        for (const auto& zone : package_->zones)
+            if (zone.scene == sceneId_)
+                drawBox(zone.bounds, {});
+        constexpr float markerMeters = .2f, directionMeters = 1;
+        color(spawnColor);
+        for (const auto& spawn : package_->spawns)
+            if (spawn.scene == sceneId_) {
+                for (const auto axis : axes)
+                    line(spawn.camera.position - axis * markerMeters,
+                         spawn.camera.position + axis * markerMeters);
+                line(spawn.camera.position,
+                     spawn.camera.position +
+                         Vec3{std::sin(spawn.camera.yaw), 0, std::cos(spawn.camera.yaw)} *
+                             directionMeters);
+            }
+        color(lightColor);
+        for (const auto& light : package_->lights)
+            if (light.scene == sceneId_)
+                for (const auto axis : axes)
+                    line(light.light.position - axis * markerMeters,
+                         light.light.position + axis * markerMeters);
+    }
     if (package_ && audio_) {
         constexpr Pixel zoneColor{120, 160, 255}, sourceColor{255, 140, 225};
         SDL_SetRenderDrawColor(renderer_.get(), zoneColor.r, zoneColor.g, zoneColor.b, zoneColor.a);

@@ -64,7 +64,7 @@ add_library(paper_runtime STATIC src/engine.cpp src/input.cpp src/sdl/session.cp
 paper_target(paper_runtime)
 target_link_libraries(paper_runtime PUBLIC Paper::Diagnostics Paper::GPU Paper::Audio PRIVATE paper_stb)
 add_library(Paper::Runtime ALIAS paper_runtime)
-add_library(paper_authoring STATIC src/authoring/document.cpp)
+add_library(paper_authoring STATIC src/authoring/document.cpp src/authoring/source.cpp)
 paper_target(paper_authoring)
 target_link_libraries(paper_authoring PUBLIC Paper::Content Paper::Resources PRIVATE paper_toml)
 add_library(Paper::Authoring ALIAS paper_authoring)

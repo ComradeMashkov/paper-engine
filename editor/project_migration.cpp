@@ -76,6 +76,15 @@ std::filesystem::path migrateProject(const fs::path& descriptor, const fs::path&
     fs::create_directories(staging);
     fs::copy(assets, staging / "assets",
              fs::copy_options::recursive | fs::copy_options::copy_symlinks);
+    ResourceStore stagedFiles(staging / "assets");
+    for (const auto& [relative, data] : overrides) {
+        const auto file = stagedFiles.resolve(relative);
+        const auto extension = file.extension();
+        if (extension != ".dcscene" && extension != ".dcworld")
+            throw std::runtime_error("Unexpected authored migration override");
+        fs::create_directories(file.parent_path());
+        write(file, content::encode(data));
+    }
     for (const auto& entry : fs::recursive_directory_iterator(staging / "assets")) {
         if (entry.is_symlink())
             throw std::runtime_error("Symlink appeared during migration");

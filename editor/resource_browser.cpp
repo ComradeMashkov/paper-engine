@@ -290,8 +290,9 @@ void ResourceBrowser::activate() {
     const auto path = item->data(0, pathRole).toString();
     if (path.endsWith(".dcscene", Qt::CaseInsensitive) && openScene)
         openScene(std::filesystem::path(path.toStdU16String()));
-    else if (openAsset && (path.endsWith(".pabank", Qt::CaseInsensitive) ||
-                           path.endsWith(".pui", Qt::CaseInsensitive)))
+    else if (openAsset && std::ranges::any_of(editableExtensions, [&](const auto& extension) {
+                 return path.endsWith(extension, Qt::CaseInsensitive);
+             }))
         openAsset(std::filesystem::path(path.toStdU16String()));
 }
 } // namespace paper::editor

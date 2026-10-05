@@ -28,6 +28,7 @@ class ResourceBrowser final : public QWidget {
     std::function<void(std::string)> instantiate;
     std::function<void(std::filesystem::path)> openScene;
     std::function<void(std::filesystem::path)> openAsset;
+    QStringList editableExtensions{".pabank", ".pui"};
     std::function<void()> floatPanel;
 
   private:

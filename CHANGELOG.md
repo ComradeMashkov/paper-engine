@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.11.0-alpha.1+build.13] - 2026-10-05
+
+- Create scenes as unsaved drafts and journal their first save with the world manifest. Author rooms, lights, spawns, transitions/trigger volumes and project entry points with complete-project validation and Undo across Save.
+- Preserve untouched TOML/comments in every scene section; retain source-only edits. Display scene data overlays and edit inherited object properties with host-registered game fields and choices.
+- Add guarded UTF-8 host-source editors, Find, validation and Undo. Save from these editors uses the project journal and host cross-file validation; include source drafts in recovery and isolated Play. The engine contains no game VM.
+- Recover new scenes and world-manifest drafts; reopen invalid scene drafts for staged repair. Compile and migrate virtual new scenes before any authored file exists. Validate Save Scene against the exact disk candidate rather than unrelated unsaved documents.
+- Verification on macOS: 18 CTest cases passed in Release and ASan/UBSan, including Metal, cold recovery, invalid pending forms, cross-scene save guards and host-source validation. Native Boxes workspace and isolated Play lifecycle checks passed on temporary copies. Version/numeric ownership and whitespace checks passed.
+- Compatibility: DCMO 2/3 remain supported; additions to the host editor API are source-compatible. Host triggers/sequences are authored as source; visual scripting graphs and real-game Play acceptance remain outside these engine checks.
+
 ## [0.10.0-alpha.1+build.12] - 2026-10-05
 
 - Journal Save All across scene documents and open UI/audio banks before atomically replacing files. Validate every source before writing; retain interrupted intent for restart or explicit retry.

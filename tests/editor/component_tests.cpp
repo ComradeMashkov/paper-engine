@@ -290,13 +290,23 @@ int main(int argc, char** argv) {
         auto edited = original;
         edited["scene"]["nodes"][0]["yaw"] = .5;
         const auto destination = root / "migrated";
-        const auto project = editor::migrateProject(sourceProject / "boxes.paperproject",
-                                                    destination, {{"boxes.dcscene", edited}});
+        auto world = content::read(sourceProject / "assets/world.dcworld");
+        world["world"]["scenes"].push_back("new.dcscene");
+        auto newScene = original;
+        newScene["scene"]["id"] = "new";
+        for (const auto* section : {"nodes", "spawns", "rooms"})
+            newScene["scene"][section] = ContentValue::array();
+        const auto project = editor::migrateProject(
+            sourceProject / "boxes.paperproject", destination,
+            {{"boxes.dcscene", edited}, {"world.dcworld", world}, {"new.dcscene", newScene}});
         const auto scene = content::read(destination / "assets/boxes.dcscene");
         check(fs::exists(project) && scene.at("version") == 3 &&
                   scene.at("scene").at("nodes")[0].contains("rotation") &&
                   content::read(sourceProject / "assets/boxes.dcscene") == original,
               "editor migration captures unsaved overrides and preserves originals");
+        check(content::read(destination / "assets/new.dcscene").at("version") == 3 &&
+                  !fs::exists(sourceProject / "assets/new.dcscene"),
+              "Project migration includes never-saved scene and world drafts");
         check(rejects([&] {
                   (void)editor::migrateProject(sourceProject / "boxes.paperproject", destination);
               }),

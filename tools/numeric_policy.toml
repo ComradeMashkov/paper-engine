@@ -21,7 +21,7 @@ literal_sha256 = "6dff0ed3f458f86ac22f55a788a2f08824d47ff3ca4b1c7d7ea0ffa926c4b0
 
 ["tests/authoring/document_tests.cpp"]
 reason = "Independent scene source fixtures: XYZ coordinates, scale and angle overrides, invalid vector lengths and Unicode source columns verify lossless editing and undo across save without using implementation defaults."
-literal_sha256 = "bf442854e31d760b0fc7669a4efef2a02607a572c77f3ed5549fddb3badeddd6"
+literal_sha256 = "698594bf6c9a003135cd6e31dea56da16d8aa618bdabe5da32aa3673ce121e87"
 
 ["tests/editor/workspace_tests.cpp"]
 reason = "Independent native workspace geometry, quaternion/axis-scale and collider-bitset expectations, object counts, resource filters, unsaved Play snapshot/start point, Undo and asynchronous close on disposable project copies."
@@ -65,8 +65,12 @@ literal_sha256 = "6094a5b4fafca4c2894d969daf9b79a43eed61506fb537bdb1b2505b62d1cb
 
 ["tests/editor/component_tests.cpp"]
 reason = "Independent Qt editor fixtures cover every UI component, exact untouched values, interactive preview isolation, pending draft validation, structured audio and WAV bytes, dummy-device audition, source guards and transactional project-copy migration."
-literal_sha256 = "e096b0ced5828aa2e2c0d0f284305dfaf41d910c8f25aa7d54d492055a1f1fa4"
+literal_sha256 = "315dbc484e59cc93289e4336164453a27946f0fa724da33fe6c21d290ce2ccb1"
 
 ["tests/editor/storage_tests.cpp"]
 reason = "Independent interrupted-write, external-conflict, malformed journal and actual child-process crash fixtures verify redo recovery and source isolation; exit status and timeout belong to the test harness."
 literal_sha256 = "ecd7932d6e2fa1924546a93bae9aeba5cbbad590ee24dbab50c98ad5c1da05ea"
+
+["tests/editor/scene_tests.cpp"]
+reason = "Independent editor fixtures verify virtual new scenes, cold recovery, journaled manifests, typed lights, invalid pending room drafts, source-only comments, Undo across Save and external text conflicts on temporary projects; modal timeouts belong to the harness."
+literal_sha256 = "71a24c9e067bd1d84a3e002940d3b98c2217415a3d2f75d4af20453daba81109"

@@ -27,6 +27,10 @@ void write(const fs::path& path, std::string_view bytes) {
 }
 void verify(const PlayInput& input) {
     ResourceStore files(input.root);
+    for (const auto& relative : input.absent)
+        if (fs::exists(files.resolve(relative)))
+            throw std::runtime_error(
+                "A new authored scene appeared outside the editor; reopen before Play");
     for (const auto& [relative, expected] : input.expected) {
         QFile file(pathText(files.resolve(relative)));
         if (!file.open(QIODevice::ReadOnly) ||

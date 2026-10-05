@@ -9,6 +9,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,7 @@ struct PlayInput {
     // Paths relative to root. Expected bytes detect external authoring changes;
     // overrides include unsaved scenes and the selected entry spawn.
     std::map<std::filesystem::path, std::string> expected, overrides;
+    std::set<std::filesystem::path> absent;
 };
 struct PlaySnapshot {
     std::shared_ptr<QTemporaryDir> directory;

@@ -1,6 +1,7 @@
 #pragma once
 #include "paper/core/content_value.hpp"
 #include <filesystem>
+#include <optional>
 #include <string>
 
 namespace paper::authoring {
@@ -17,7 +18,11 @@ class SceneDocument {
     void setProperty(std::string_view id, std::string_view name, const ContentValue& value);
     // Structural commands keep a complete authored-node snapshot for undo across Save.
     void replaceNodes(ContentValue nodes);
-    bool dirty() const { return data_ != saved_; }
+    // Replace a complete authored scene (rooms/lights/spawns/zones included).
+    // The editor validates cross-file references before accepting a command.
+    void replaceData(ContentValue data);
+    void replaceSource(std::string source);
+    bool dirty() const { return data_ != saved_ || (draftSource_ && *draftSource_ != source_); }
     // Patches editable fields and array-of-table nodes; verifies semantic equality.
     // Unsupported source layouts fail without producing a replacement file.
     std::string serialized() const;
@@ -29,5 +34,6 @@ class SceneDocument {
     std::filesystem::path path_;
     std::string source_;
     ContentValue data_, saved_;
+    std::optional<std::string> draftSource_;
 };
 } // namespace paper::authoring

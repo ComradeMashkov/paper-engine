@@ -1,6 +1,7 @@
 #include "paper/editor/application.hpp"
 #include "audio_bank_editor.hpp"
 #include "paper/authoring/document.hpp"
+#include "paper/authoring/source.hpp"
 #include "paper/content/document.hpp"
 #include "paper/physics/scene.hpp"
 #include "paper/scenes/transforms.hpp"
@@ -9,6 +10,8 @@
 #include "project_storage.hpp"
 #include "property_form.hpp"
 #include "resource_browser.hpp"
+#include "scene_data_editor.hpp"
+#include "text_asset_editor.hpp"
 #include "ui_editor.hpp"
 #include "viewport.hpp"
 #include "workspace.hpp"
@@ -24,6 +27,7 @@
 #include <QFormLayout>
 #include <QFutureWatcher>
 #include <QHeaderView>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -85,13 +89,32 @@ struct Project {
     std::unique_ptr<QLockFile> lock;
     std::unique_ptr<ProjectStorage> storage;
     std::map<fs::path, std::string> sources;
+    ContentValue world;
+    std::map<fs::path, std::shared_ptr<authoring::SceneDocument>> knownScenes;
+    std::set<fs::path> newScenes;
+    fs::path worldPath() const { return fs::weakly_canonical(root / manifest); }
+    std::string worldSource() const {
+        const auto& baseline = sources.at(worldPath());
+        return authoring::patchSource(baseline, content::parse(baseline, manifest.string()), world,
+                                      manifest.string());
+    }
+    bool dirty() const {
+        return worldSource() != sources.at(worldPath()) ||
+               std::ranges::any_of(scenes, [this](const auto& entry) {
+                   return entry.second->dirty() || newScenes.contains(entry.first);
+               });
+    }
+    std::optional<std::string> baseline(const fs::path& path) const {
+        return newScenes.contains(path) ? std::nullopt : std::optional(scenes.at(path)->original());
+    }
     void verifySources() const {
         for (const auto& [path, original] : sources)
             if (bytes(path) != original)
                 throw std::runtime_error("Project dependencies changed outside the editor; reopen "
                                          "the project before editing or saving");
         for (const auto& [path, scene] : scenes)
-            if (bytes(scene->path()) != scene->original())
+            if ((newScenes.contains(path) && fs::exists(scene->path())) ||
+                (!newScenes.contains(path) && bytes(scene->path()) != scene->original()))
                 throw std::runtime_error("Scene changed outside the editor; reopen the project "
                                          "before editing or saving");
     }
@@ -120,7 +143,7 @@ struct Project {
         if (acquireLock)
             storage->finishSave();
         ResourceStore files(root);
-        const auto world = readSource(files.resolve(manifest));
+        world = readSource(files.resolve(manifest));
         for (const auto& relative : world.at("world").at("resources"))
             (void)readSource(files.resolve(relative.get<std::string>()));
         for (const auto& relative : world.at("world").at("scenes")) {
@@ -129,6 +152,7 @@ struct Project {
             scenes.emplace(relativePath,
                            std::make_shared<authoring::SceneDocument>(full, bytes(full)));
         }
+        knownScenes = scenes;
         if (scenes.empty())
             throw std::runtime_error("Project has no scenes");
         for (const auto& relative : world.at("world").at("templates")) {
@@ -145,6 +169,7 @@ struct Project {
     }
     SceneDocuments snapshot() const {
         SceneDocuments result;
+        result.emplace(manifest, world);
         for (const auto& [path, scene] : scenes)
             result.emplace(path, scene->data());
         return result;
@@ -187,7 +212,8 @@ PreviewResult compile(const fs::path& root, const fs::path& manifest, SceneDocum
                     for (const auto& child : value)
                         self(self, child);
             };
-            const auto world = content::read(root / manifest);
+            const auto world = documents.contains(manifest) ? documents.at(manifest)
+                                                            : content::read(root / manifest);
             ResourceStore files(root);
             for (const auto& path : world.at("world").at("resources"))
                 collect(collect, content::read(files.resolve(path.get<std::string>())));
@@ -215,6 +241,8 @@ PreviewResult compile(const fs::path& root, const fs::path& manifest, SceneDocum
             PhysicsWorld world(limits);
             (void)addSceneColliders(world, *package, scene);
         }
+        if (options.validateScenes)
+            options.validateScenes(*package);
         return {std::move(package), {}};
     } catch (const std::exception& error) {
         return {{}, error.what()};
@@ -379,6 +407,10 @@ class Window final : public QMainWindow {
         auto* reset = new QPushButton(tr("Reset Transform to Template"));
         connect(reset, &QPushButton::clicked, this, [this] { resetTransform(); });
         form->addRow(reset);
+        auto* objectProperties = new QPushButton(tr("Edit Object Properties…"));
+        objectProperties->setObjectName("objectProperties");
+        connect(objectProperties, &QPushButton::clicked, this, [this] { editObjectProperties(); });
+        form->addRow(objectProperties);
         auto* scroll = new QScrollArea;
         scroll->setWidgetResizable(true);
         scroll->setWidget(inspector);
@@ -401,6 +433,8 @@ class Window final : public QMainWindow {
             panel->raise();
         };
         assets_->openAsset = [this](const fs::path& path) { editAsset(project_->root / path); };
+        for (const auto& type : options_.textAssets)
+            assets_->editableExtensions.push_back(text(type.extension));
         dock(tr("Project"), "assets", assets_, Qt::BottomDockWidgetArea);
         problems_ = new QListWidget;
         problems_->setObjectName("projectProblems");
@@ -433,6 +467,34 @@ class Window final : public QMainWindow {
             if (current_)
                 save(current_);
         });
+        auto* newScene = file->addAction(tr("New Scene…"));
+        newScene->setObjectName("newScene");
+        connect(newScene, &QAction::triggered, this, [this] { createScene(); });
+        auto* sceneData = file->addAction(tr("Edit Scene Data…"));
+        sceneData->setObjectName("editSceneData");
+        connect(sceneData, &QAction::triggered, this, [this] { editSceneData(); });
+        auto* entrySpawn = file->addAction(tr("Set Project Entry Spawn…"));
+        entrySpawn->setObjectName("setEntrySpawn");
+        connect(entrySpawn, &QAction::triggered, this, [this] {
+            if (!project_ || !package_)
+                return;
+            QStringList spawns;
+            for (const auto& spawn : package_->spawns)
+                spawns.push_back(text(spawn.id));
+            bool accepted = false;
+            const auto selected = QInputDialog::getItem(
+                this, tr("Project Entry Spawn"), tr("Spawn"), spawns,
+                std::max(0, static_cast<int>(spawns.indexOf(text(package_->entrySpawn)))), false,
+                &accepted);
+            if (accepted) {
+                auto state = projectState();
+                state["world"]["world"]["entrySpawn"] = selected.toStdString();
+                commitProject(std::move(state), tr("Set Entry Spawn"));
+            }
+        });
+        auto* gameplay = file->addAction(tr("Edit Object Properties…"));
+        gameplay->setObjectName("editObjectProperties");
+        connect(gameplay, &QAction::triggered, this, [this] { editObjectProperties(); });
         auto* saveAll = file->addAction(tr("Save All"));
         saveAll->setObjectName("saveAll");
         saveAll->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
@@ -448,8 +510,10 @@ class Window final : public QMainWindow {
             try {
                 if (!project_->storage->finishSave())
                     return;
-                for (const auto& [path, doc] : project_->scenes)
+                for (const auto& [path, doc] : project_->scenes) {
                     doc->rebaseSaved(bytes(doc->path()));
+                    project_->newScenes.erase(path);
+                }
                 for (auto& [path, source] : project_->sources)
                     source = bytes(path);
                 const auto reconcile = [](auto* editor) {
@@ -461,6 +525,8 @@ class Window final : public QMainWindow {
                 };
                 reconcile(uiEditor_.get());
                 reconcile(audioEditor_.get());
+                for (auto& [path, editor] : textEditors_)
+                    reconcile(editor.get());
                 recoveryDeferred_ = false;
                 requestPreview();
                 updateState();
@@ -526,6 +592,19 @@ class Window final : public QMainWindow {
             action->setObjectName(name);
             connect(action, &QAction::triggered, this,
                     [this, extension, title] { newAsset(extension, title); });
+        }
+        for (const auto& type : options_.textAssets) {
+            auto* action = file->addAction(tr("Edit %1…").arg(text(type.name)));
+            action->setObjectName("editTextAsset" + text(type.extension));
+            connect(action, &QAction::triggered, this, [this, type] {
+                if (!project_)
+                    return;
+                const auto chosen = QFileDialog::getOpenFileName(
+                    this, text(type.name), pathText(project_->root),
+                    text(type.name) + " (*" + text(type.extension) + ")");
+                if (!chosen.isEmpty())
+                    editAsset(filePath(chosen));
+            });
         }
         auto* upgrade = file->addAction(tr("Upgrade Project Copy for Free Transforms…"));
         upgrade->setObjectName("upgradeProject");
@@ -674,6 +753,12 @@ class Window final : public QMainWindow {
         colliders->setToolTip(
             tr("Show collider bounds; selected mesh colliders show their triangles"));
         connect(colliders, &QAction::toggled, viewport_, &Viewport::collisions);
+        auto* sceneOverlays = tools->addAction(tr("Scene Data"));
+        sceneOverlays->setObjectName("showSceneData");
+        sceneOverlays->setCheckable(true);
+        sceneOverlays->setToolTip(
+            tr("Show rooms, transition volumes, spawn directions and lights"));
+        connect(sceneOverlays, &QAction::toggled, viewport_, &Viewport::sceneData);
         auto* hideAudio = tools->addAction(tr("Hide Audio Overlays"));
         hideAudio->setObjectName("hideAudioOverlays");
         connect(hideAudio, &QAction::triggered, this, [this] { viewport_->audio(std::nullopt); });
@@ -794,6 +879,23 @@ class Window final : public QMainWindow {
         if (!project_)
             return;
         try {
+            const auto registered =
+                std::ranges::find_if(options_.textAssets, [&](const auto& type) {
+                    return pathText(path.extension())
+                               .compare(text(type.extension), Qt::CaseInsensitive) == 0;
+                });
+            if (registered != options_.textAssets.end()) {
+                const auto canonical = fs::canonical(path);
+                auto& editor = textEditors_[canonical];
+                if (!editor || !editor->isVisible()) {
+                    editor = std::make_unique<TextAssetEditor>(canonical, project_->root,
+                                                               *registered, this);
+                    editor->saveProject = [this] { return saveBatch(nullptr); };
+                }
+                editor->show();
+                editor->raise();
+                return;
+            }
             if (pathText(path.extension()).compare(".pui", Qt::CaseInsensitive) == 0) {
                 if (uiEditor_ && !uiEditor_->close())
                     return;
@@ -843,6 +945,10 @@ class Window final : public QMainWindow {
              {static_cast<QDialog*>(uiEditor_.get()), static_cast<QDialog*>(audioEditor_.get())})
             if (dialog && dialog->isVisible() && !dialog->close())
                 return false;
+        for (auto& [path, editor] : textEditors_)
+            if (editor && editor->isVisible() && !editor->close())
+                return false;
+        textEditors_.clear();
         uiEditor_.reset();
         audioEditor_.reset();
         return true;
@@ -958,6 +1064,227 @@ class Window final : public QMainWindow {
         } catch (const std::exception& e) {
             problem(text(e.what()));
         }
+    }
+    ContentValue projectState() const {
+        auto scenes = ContentValue::object(), sources = ContentValue::object();
+        for (const auto& [path, doc] : project_->scenes) {
+            scenes[path.generic_string()] = doc->data();
+            sources[path.generic_string()] = doc->serialized();
+        }
+        return {{"world", project_->world}, {"scenes", scenes}, {"sources", sources}};
+    }
+    bool commitProject(ContentValue after, QString title, fs::path active = {}) {
+        if (!project_)
+            return false;
+        try {
+            project_->verifySources();
+            const auto before = projectState();
+            if (before == after)
+                return true;
+            SceneDocuments documents;
+            documents[project_->manifest] = after.at("world");
+            (void)authoring::patchSource(project_->sources.at(project_->worldPath()),
+                                         content::parse(project_->sources.at(project_->worldPath()),
+                                                        project_->manifest.string()),
+                                         after.at("world"), project_->manifest.string());
+            for (const auto& [path, value] : after.at("scenes").items()) {
+                auto candidate = *project_->knownScenes.at(fs::path(path));
+                if (after.at("sources").contains(path) &&
+                    (!before.at("sources").contains(path) ||
+                     after.at("sources").at(path) != before.at("sources").at(path)))
+                    candidate.replaceSource(after.at("sources").at(path).get<std::string>());
+                candidate.replaceData(value);
+                after["sources"][path] = candidate.serialized();
+                documents[fs::path(path)] = value;
+            }
+            const auto checked = compile(project_->root, project_->manifest, documents, options_);
+            if (!checked.package)
+                throw std::runtime_error(checked.error);
+            if (active.empty() && current_)
+                active = current_->path().lexically_relative(project_->root);
+            undo_.push(new SceneCommand(
+                [this, active, initial = checked.package](const ContentValue& state) mutable {
+                    project_->world = state.at("world");
+                    project_->scenes.clear();
+                    for (const auto& [path, value] : state.at("scenes").items()) {
+                        auto doc = project_->knownScenes.at(fs::path(path));
+                        doc->replaceSource(state.at("sources").at(path).get<std::string>());
+                        doc->replaceData(value);
+                        project_->scenes.emplace(fs::path(path), std::move(doc));
+                    }
+                    ++revision_;
+                    selected_.clear();
+                    {
+                        QSignalBlocker block(sceneList_);
+                        sceneList_->clear();
+                        for (const auto& [path, doc] : project_->scenes)
+                            sceneList_->addItem(
+                                text(doc->data().at("scene").at("id").get<std::string>()),
+                                pathText(path));
+                        const auto index = sceneList_->findData(pathText(active));
+                        sceneList_->setCurrentIndex(index < 0 ? 0 : index);
+                    }
+                    current_ = project_->scenes.at(filePath(sceneList_->currentData().toString()));
+                    rebuildTree();
+                    updateState();
+                    if (initial)
+                        publish({std::move(initial), {}});
+                    else
+                        requestPreview();
+                },
+                before, std::move(after), std::move(title)));
+            return true;
+        } catch (const std::exception& e) {
+            problem(text(e.what()));
+            return false;
+        }
+    }
+    void createScene() {
+        if (!project_)
+            return;
+        bool ok = false;
+        const auto id =
+            QInputDialog::getText(this, tr("New Scene"),
+                                  tr("Scene ID (letters, digits, '.', '-' or '_'). A matching "
+                                     ".dcscene file is created beside the world manifest on Save."),
+                                  QLineEdit::Normal, "new-scene", &ok)
+                .toStdString();
+        if (!ok || id.empty())
+            return;
+        try {
+            if (id.find('/') != std::string::npos || id.find('\\') != std::string::npos)
+                throw std::runtime_error("Scene ID cannot contain path separators");
+            const auto relative = project_->manifest.parent_path() / (id + ".dcscene");
+            ResourceStore files(project_->root);
+            const auto full = files.resolve(relative);
+            if (fs::exists(full) || project_->knownScenes.contains(relative))
+                throw std::runtime_error("Scene filename is already in use");
+            constexpr double initialEyeMeters = 1.62, initialRoomHalfWidthMeters = 10,
+                             initialRoomHalfHeightMeters = 5;
+            const ContentValue room{
+                {"id", id + ".room"},
+                {"label", options_.initialRoomLabel.empty() ? id : options_.initialRoomLabel},
+                {"floorY", 0.0},
+                {"bounds",
+                 ContentValue{{"center", ContentValue::array({0.0, 0.0, 0.0})},
+                              {"half", ContentValue::array({initialRoomHalfWidthMeters,
+                                                            initialRoomHalfHeightMeters,
+                                                            initialRoomHalfWidthMeters})}}}};
+            const ContentValue spawn{
+                {"id", id + ".start"},
+                {"position", ContentValue::array({0.0, initialEyeMeters, 0.0})},
+                {"yaw", 0.0}};
+            const ContentValue data{{"format", "dcmo.scene"},
+                                    {"version", project_->world.at("version")},
+                                    {"scene", ContentValue{{"id", id},
+                                                           {"nodes", ContentValue::array()},
+                                                           {"rooms", ContentValue::array({room})},
+                                                           {"spawns", ContentValue::array({spawn})},
+                                                           {"zones", ContentValue::array()},
+                                                           {"lights", ContentValue::array()}}}};
+            auto doc = std::make_shared<authoring::SceneDocument>(full, content::encode(data));
+            project_->knownScenes.emplace(relative, doc);
+            project_->newScenes.insert(relative);
+            auto after = projectState();
+            after["world"]["world"]["scenes"].push_back(relative.generic_string());
+            after["scenes"][relative.generic_string()] = data;
+            after["sources"][relative.generic_string()] = doc->serialized();
+            if (!commitProject(std::move(after), tr("Create Scene"), relative)) {
+                project_->knownScenes.erase(relative);
+                project_->newScenes.erase(relative);
+            }
+        } catch (const std::exception& e) {
+            problem(text(e.what()));
+        }
+    }
+    void editSceneData(std::optional<std::string> recovered = std::nullopt) {
+        if (!project_ || !current_ || sceneDraft_)
+            return;
+        const auto doc = current_;
+        const auto path = doc->path().lexically_relative(project_->root);
+        SceneDataEditor dialog(
+            doc->serialized(),
+            [this, path](const ContentValue& data, const std::string& source) {
+                auto state = projectState();
+                state["scenes"][path.generic_string()] = data;
+                state["sources"][path.generic_string()] = source;
+                return commitProject(std::move(state), tr("Edit Scene Data"), path);
+            },
+            this);
+        std::vector<std::string> spawns;
+        for (const auto& spawn : package_->spawns)
+            spawns.push_back(spawn.id);
+        dialog.choices(std::move(spawns));
+        if (recovered)
+            dialog.restoreSource(*recovered);
+        sceneDraft_ = &dialog;
+        sceneDraftPath_ = path;
+        dialog.exec();
+        sceneDraft_ = nullptr;
+        sceneDraftPath_.clear();
+    }
+    void editObjectProperties() {
+        if (!project_ || !current_ || selected_.empty())
+            return;
+        QDialog dialog(this);
+        dialog.setWindowTitle(tr("Object Properties"));
+        auto* layout = new QVBoxLayout(&dialog);
+        auto* form = new PropertyForm;
+        ContentValue values{
+            {"room", ""}, {"acoustic", false}, {"reach", sceneLimits::defaultReachMeters}};
+        values.overlay(options_.nodePropertyDefaults);
+        const auto effective = project_->effective(current_->node(selected_));
+        for (const auto& [key, value] : effective.items())
+            if (values.contains(key))
+                values[key] = value;
+        if (values.empty()) {
+            problem(tr("The host has not registered object component properties"));
+            return;
+        }
+        PropertyForm::Choices choices;
+        for (const auto& [key, names] : options_.nodePropertyChoices)
+            for (const auto& name : names)
+                choices[key].push_back(text(name));
+        choices["room"].push_back("");
+        for (const auto& room : package_->rooms)
+            if (room.scene == current_->data().at("scene").at("id").get<std::string>())
+                choices["room"].push_back(text(room.id));
+        form->setValue(values, std::move(choices));
+        layout->addWidget(form);
+        auto* status = new QLabel;
+        status->setWordWrap(true);
+        layout->addWidget(status);
+        auto* apply = new QPushButton(tr("Apply"));
+        apply->setObjectName("applyObjectProperties");
+        layout->addWidget(apply);
+        connect(apply, &QPushButton::clicked, &dialog, [this, &dialog, form, values, status] {
+            try {
+                const auto edited = form->value();
+                auto candidate = *current_;
+                auto nodes = candidate.nodes();
+                for (auto& node : nodes)
+                    if (node.at("id") == selected_)
+                        for (const auto& [key, value] : edited.items())
+                            if (value != values.at(key))
+                                node[key] = value;
+                // Empty optional references mean absence, including inherited values.
+                candidate.replaceNodes(nodes);
+                for (const auto& [key, value] : edited.items())
+                    if (value != values.at(key) && value.is_string() &&
+                        value.get<std::string>().empty())
+                        clearEffective(candidate, key);
+                auto state = projectState();
+                const auto path = current_->path().lexically_relative(project_->root);
+                state["scenes"][path.generic_string()] = candidate.data();
+                if (commitProject(std::move(state), tr("Edit Object Properties"), path))
+                    dialog.accept();
+                else
+                    status->setText(tr("Invalid component values; see Problems."));
+            } catch (const std::exception& e) {
+                status->setText(text(e.what()));
+            }
+        });
+        dialog.exec();
     }
     static constexpr size_t yawField = 3, scaleField = 4, quaternionField = 5, axisScaleField = 9,
                             propertyCount = 12;
@@ -1625,19 +1952,26 @@ class Window final : public QMainWindow {
     std::vector<StoredEdit> recoveryEdits() const {
         std::vector<StoredEdit> edits;
         for (const auto& [path, doc] : project_->scenes)
-            edits.push_back({doc->path(), doc->original(), doc->serialized()});
+            edits.push_back({doc->path(), project_->baseline(path),
+                             sceneDraft_ && sceneDraftPath_ == path ? sceneDraft_->recoverySource()
+                                                                    : doc->serialized()});
         if (uiEditor_ && uiEditor_->isVisible())
             edits.push_back(
                 {uiEditor_->file(), uiEditor_->original(), uiEditor_->recoverySource()});
         if (audioEditor_ && audioEditor_->isVisible())
             edits.push_back(
                 {audioEditor_->file(), audioEditor_->original(), audioEditor_->recoverySource()});
-        const bool changed =
-            std::ranges::any_of(edits, [](const auto& edit) { return edit.before != edit.after; });
+        for (const auto& [path, editor] : textEditors_)
+            if (editor->isVisible())
+                edits.push_back({path, editor->original(), editor->recoverySource()});
+        const bool changed = project_->dirty() || std::ranges::any_of(edits, [](const auto& edit) {
+                                 return edit.before != edit.after;
+                             });
         if (!changed)
             return {};
         for (const auto& [path, source] : project_->sources)
-            edits.push_back({path, source, source});
+            edits.push_back(
+                {path, source, path == project_->worldPath() ? project_->worldSource() : source});
         return edits;
     }
     void autosaveProject() {
@@ -1678,47 +2012,106 @@ class Window final : public QMainWindow {
                     tr("Recovery deferred; automatic snapshots paused until Restore or Discard."));
                 return;
             }
-            auto documents = project_->snapshot();
-            for (const auto& edit : edits)
-                for (const auto& [path, doc] : project_->scenes)
-                    if (doc->path() == edit.file)
-                        documents[path] = content::parse(edit.after, edit.file.string());
-            const auto checked = compile(project_->root, project_->manifest, documents, options_);
-            if (!checked.package)
-                throw std::runtime_error(checked.error);
-            auto before = ContentValue::object(), after = ContentValue::object();
-            for (const auto& [path, doc] : project_->scenes) {
-                before[path.generic_string()] = doc->nodes();
-                after[path.generic_string()] = documents.at(path).at("scene").at("nodes");
+            auto state = projectState();
+            std::map<fs::path, std::string> sceneSources;
+            bool malformed = false;
+            for (const auto& edit : edits) {
+                if (edit.file == project_->worldPath()) {
+                    state["world"] = content::parse(edit.after, edit.file.string());
+                    continue;
+                }
+                const auto relative = edit.file.lexically_relative(project_->root);
+                if (edit.file.extension() != ".dcscene" || relative.empty() ||
+                    *relative.begin() == ".." || edit.before == edit.after)
+                    continue;
+                sceneSources[relative] = edit.after;
+                if (!project_->knownScenes.contains(relative)) {
+                    // Rebuild a valid editable baseline for an unsaved new scene. The raw
+                    // recovery text is retained even if its current form/syntax is invalid.
+                    const auto id = edit.file.stem().string();
+                    const ContentValue shell{
+                        {"format", "dcmo.scene"},
+                        {"version", state.at("world").at("version")},
+                        {"scene", ContentValue{{"id", id},
+                                               {"nodes", ContentValue::array()},
+                                               {"rooms", ContentValue::array()},
+                                               {"spawns", ContentValue::array()}}}};
+                    project_->knownScenes[relative] = std::make_shared<authoring::SceneDocument>(
+                        edit.file, content::encode(shell));
+                    project_->newScenes.insert(relative);
+                }
+                try {
+                    state["scenes"][relative.generic_string()] =
+                        content::parse(edit.after, edit.file.string());
+                    state["sources"][relative.generic_string()] = edit.after;
+                } catch (const std::exception&) {
+                    malformed = true;
+                    state["scenes"][relative.generic_string()] =
+                        project_->knownScenes.at(relative)->data();
+                }
             }
-            if (before != after) {
-                undo_.push(new SceneCommand(
-                    [this, docs = project_->scenes,
-                     initial = checked.package](const ContentValue& state) mutable {
-                        for (const auto& [path, doc] : docs)
-                            doc->replaceNodes(state.at(path.generic_string()));
-                        ++revision_;
-                        selected_.clear();
-                        rebuildTree();
-                        updateState();
-                        if (initial)
-                            publish({std::move(initial), {}});
-                        else
-                            requestPreview();
-                    },
-                    std::move(before), std::move(after), tr("Recover Scenes")));
+            std::set<std::string> declared;
+            for (const auto& path : state.at("world").at("world").at("scenes"))
+                declared.insert(path.get<std::string>());
+            std::erase_if(state["scenes"].items(),
+                          [&](const auto& entry) { return !declared.contains(entry.first); });
+            SceneDocuments documents;
+            documents[project_->manifest] = state.at("world");
+            for (const auto& [path, data] : state.at("scenes").items())
+                documents[fs::path(path)] = data;
+            const auto checked = compile(project_->root, project_->manifest, documents, options_);
+            if (malformed || !checked.package) {
+                recoveryDeferred_ = true;
+                for (auto& [path, source] : sceneSources) {
+                    if (!declared.contains(path.generic_string()))
+                        continue;
+                    bool applied = false;
+                    const auto doc = project_->knownScenes.at(path);
+                    SceneDataEditor dialog(
+                        doc->serialized(),
+                        [&state, path, &applied](const ContentValue& data,
+                                                 const std::string& stagedSource) {
+                            state["scenes"][path.generic_string()] = data;
+                            state["sources"][path.generic_string()] = stagedSource;
+                            applied = true;
+                            return true;
+                        },
+                        this);
+                    dialog.setWindowTitle(tr("Repair Recovery Draft — ") + pathText(path));
+                    dialog.stagedRecovery();
+                    dialog.restoreSource(source);
+                    dialog.exec();
+                    if (!applied) {
+                        state["scenes"][path.generic_string()] = doc->data();
+                        state["sources"][path.generic_string()] = doc->serialized();
+                    }
+                    source = applied ? dialog.recoverySource() : doc->serialized();
+                }
+            }
+            if (!commitProject(state, tr("Recover Project"))) {
+                auto retained = edits;
+                for (auto& edit : retained) {
+                    const auto relative = edit.file.lexically_relative(project_->root);
+                    if (sceneSources.contains(relative))
+                        edit.after = sceneSources.at(relative);
+                }
+                project_->storage->autosave(retained);
+                recoveryDeferred_ = true;
+                problem(tr("The repaired recovery candidate is still invalid. Drafts were "
+                           "retained; use Restore again to repair them."));
+                return;
             }
             for (const auto& edit : edits) {
-                if (edit.before == edit.after ||
-                    std::ranges::any_of(project_->scenes, [&](const auto& scene) {
-                        return scene.second->path() == edit.file;
-                    }))
+                if (edit.before == edit.after || edit.file == project_->worldPath() ||
+                    edit.file.extension() == ".dcscene")
                     continue;
                 editAsset(edit.file);
                 if (uiEditor_ && uiEditor_->file() == edit.file)
                     uiEditor_->restoreSource(edit.after);
                 else if (audioEditor_ && audioEditor_->file() == edit.file)
                     audioEditor_->restoreSource(edit.after);
+                else if (textEditors_.contains(edit.file))
+                    textEditors_.at(edit.file)->restoreSource(edit.after);
             }
             recoveryDeferred_ = false;
             autosaveProject();
@@ -1728,18 +2121,28 @@ class Window final : public QMainWindow {
         }
     }
     bool save(const std::shared_ptr<authoring::SceneDocument>& document) {
-        return saveBatch(document);
+        return saveBatch(project_->worldSource() != project_->sources.at(project_->worldPath())
+                             ? nullptr
+                             : document);
     }
     bool saveBatch(const std::shared_ptr<authoring::SceneDocument>& only) {
         try {
             project_->verifySources();
+            auto savedCandidate = project_->snapshot();
+            if (only) {
+                savedCandidate[project_->manifest] = content::parse(
+                    project_->sources.at(project_->worldPath()), project_->manifest.string());
+                for (const auto& [path, doc] : project_->scenes)
+                    if (doc != only)
+                        savedCandidate[path] = content::parse(doc->original(), path.string());
+            }
             const auto checked =
-                compile(project_->root, project_->manifest, project_->snapshot(), options_);
+                compile(project_->root, project_->manifest, savedCandidate, options_);
             if (!checked.package)
                 throw std::runtime_error(checked.error);
             std::vector<StoredEdit> edits;
             for (const auto& [path, doc] : project_->scenes)
-                edits.push_back({doc->path(), doc->original(),
+                edits.push_back({doc->path(), project_->baseline(path),
                                  !only || doc == only ? doc->serialized() : doc->original()});
             if (!only) {
                 if (uiEditor_ && uiEditor_->isVisible()) {
@@ -1756,24 +2159,47 @@ class Window final : public QMainWindow {
                         {audioEditor_->file(), audioEditor_->original(), std::move(output)});
                 }
             }
+            if (!only)
+                for (const auto& [path, editor] : textEditors_)
+                    if (editor->isVisible())
+                        edits.push_back({path, editor->original(), editor->snapshot()});
             for (const auto& [path, source] : project_->sources)
-                edits.push_back({path, source, source});
+                edits.push_back(
+                    {path, source,
+                     path == project_->worldPath() && !only ? project_->worldSource() : source});
+            if (options_.validateContent) {
+                std::map<fs::path, std::string> overrides;
+                for (const auto& edit : edits) {
+                    const auto relative = edit.file.lexically_relative(project_->root);
+                    if (!relative.empty() && *relative.begin() != "..")
+                        overrides[relative] = edit.after;
+                }
+                options_.validateContent(*checked.package, overrides);
+            }
             const bool changed =
                 std::ranges::any_of(edits, [](const auto& e) { return e.before != e.after; });
             if (changed)
                 project_->storage->save(edits);
             for (const auto& edit : edits) {
                 for (const auto& [path, doc] : project_->scenes)
-                    if (doc->path() == edit.file && (!only || doc == only))
+                    if (doc->path() == edit.file && (!only || doc == only)) {
                         doc->acceptSaved(edit.after);
+                        project_->newScenes.erase(path);
+                    }
+                if (project_->sources.contains(edit.file))
+                    project_->sources[edit.file] = edit.after;
                 if (uiEditor_ && uiEditor_->file() == edit.file)
                     uiEditor_->acceptSaved(edit.after);
                 if (audioEditor_ && audioEditor_->file() == edit.file)
                     audioEditor_->acceptSaved(edit.after);
+                if (textEditors_.contains(edit.file))
+                    textEditors_.at(edit.file)->acceptSaved(edit.after);
             }
             publish(checked);
             updateState();
             autosaveProject();
+            if (only)
+                requestPreview();
             return true;
         } catch (const std::exception& error) {
             problem(text(error.what()));
@@ -1788,7 +2214,7 @@ class Window final : public QMainWindow {
         for (const auto& [path, doc] : project_->scenes)
             if (doc->dirty())
                 dirty.push_back(doc);
-        if (dirty.empty())
+        if (!project_->dirty())
             return true;
         const auto answer = QMessageBox::question(
             this, tr("Unsaved Changes"), tr("Save changed scenes before closing?"),
@@ -1861,7 +2287,10 @@ class Window final : public QMainWindow {
                 if (path != project_->file)
                     input.expected.emplace(path.lexically_relative(project_->root), source);
             for (const auto& [path, document] : project_->scenes) {
-                input.expected[path] = document->original();
+                if (!project_->newScenes.contains(path))
+                    input.expected[path] = document->original();
+                else
+                    input.absent.insert(path);
                 input.overrides[path] = document->serialized();
             }
             if (uiEditor_ && uiEditor_->isVisible()) {
@@ -1881,10 +2310,22 @@ class Window final : public QMainWindow {
                 input.overrides[path] = audioEditor_->snapshot();
             }
             ResourceStore files(project_->root);
-            auto world = content::parse(project_->sources.at(files.resolve(project_->manifest)),
-                                        project_->manifest.string());
+            auto world = project_->world;
             world["world"]["entrySpawn"] = spawn_->currentData().toString().toStdString();
             input.overrides[project_->manifest] = content::encode(world);
+            for (const auto& [path, editor] : textEditors_)
+                if (editor->isVisible()) {
+                    const auto relative = path.lexically_relative(project_->root);
+                    input.expected[relative] = editor->original();
+                    input.overrides[relative] = editor->snapshot();
+                }
+            if (options_.validateContent) {
+                const auto checked =
+                    compile(project_->root, project_->manifest, project_->snapshot(), options_);
+                if (!checked.package)
+                    throw std::runtime_error(checked.error);
+                options_.validateContent(*checked.package, input.overrides);
+            }
             play_->start(std::move(input), options_.playExecutable, options_.playArguments);
         } catch (const std::exception& error) {
             console_->appendPlainText(tr("Cannot Play: ") + text(error.what()));
@@ -1892,12 +2333,10 @@ class Window final : public QMainWindow {
     }
     void updateState() {
         updatePlay();
-        const bool dirty = project_ && std::ranges::any_of(project_->scenes, [](const auto& item) {
-                               return item.second->dirty();
-                           });
+        const bool dirty = project_ && project_->dirty();
         setWindowTitle(text(options_.title) + (project_ ? " — " + text(project_->name) : "") +
                        (dirty ? " *" : ""));
-        save_->setEnabled(current_ && current_->dirty());
+        save_->setEnabled(current_ && project_ && (current_->dirty() || project_->dirty()));
         if (project_)
             statusBar()->showMessage(dirty ? tr("Unsaved changes")
                                            : tr("Scene saved • RMB: Look • Wheel: "
@@ -1931,7 +2370,10 @@ class Window final : public QMainWindow {
     std::unique_ptr<Project> project_;
     std::unique_ptr<UiEditor> uiEditor_;
     std::unique_ptr<AudioBankEditor> audioEditor_;
+    std::map<fs::path, std::unique_ptr<TextAssetEditor>> textEditors_;
     std::shared_ptr<authoring::SceneDocument> current_;
+    SceneDataEditor* sceneDraft_ = nullptr;
+    fs::path sceneDraftPath_;
     std::shared_ptr<ScenePackage> package_;
     Viewport* viewport_ = nullptr;
     QTreeWidget* tree_ = nullptr;

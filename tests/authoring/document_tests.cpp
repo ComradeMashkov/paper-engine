@@ -1,4 +1,5 @@
 #include "paper/authoring/document.hpp"
+#include "paper/authoring/source.hpp"
 #include "paper/content/document.hpp"
 #include "paper/scenes/scene.hpp"
 #include <fstream>
@@ -112,6 +113,83 @@ int main(int argc, char** argv) {
         duplicate.elements().push_back(validNodes.at(0));
         rejects([&] { structure.replaceNodes(duplicate); });
         check(structure.nodes() == validNodes, "Invalid node replacement is atomic");
+        const std::string completeSource = source + R"(
+# Комната сохраняет комментарии
+[[scene.rooms]]
+id = 'room.main'
+label = 'Главная'
+floorY = 0.0
+[scene.rooms.bounds]
+center = [0, 0, 0]
+half = [4, 3, 5] # metres
+[[scene.lights]]
+id = 'lamp'
+position = [0, 2, 0]
+intensity = 1.0 # authored light
+[[scene.spawns]]
+id = 'start'
+position = [0, 1.7, 0]
+[[scene.zones]]
+id = 'exit'
+targetSpawn = 'start'
+[scene.zones.bounds]
+center = [1, 1, 1]
+half = [1, 1, 1]
+)";
+        SceneDocument complete("complete.dcscene", completeSource);
+        auto completeData = complete.data();
+        completeData["scene"]["rooms"][0]["bounds"]["half"][0] = 6.25;
+        completeData["scene"]["lights"][0]["intensity"] = 2.5;
+        completeData["scene"]["spawns"].push_back(
+            {{"id", "annex.start"}, {"position", ContentValue::array({2, 1.7, 3})}});
+        completeData["scene"]["zones"][0]["targetSpawn"] = "annex.start";
+        completeData["scene"]["nodes"][0]["actions"] = "chair.actions";
+        complete.replaceData(completeData);
+        auto completeOutput = complete.serialized();
+        check(paper::content::parse(completeOutput, "complete") == completeData &&
+                  completeOutput.find("# metres") != std::string::npos &&
+                  completeOutput.find("# authored light") != std::string::npos &&
+                  completeOutput.find("label = 'Главная'") != std::string::npos,
+              "All scene sections and gameplay overrides preserve comments and Unicode");
+        complete.acceptSaved(completeOutput);
+        complete.replaceSource(completeSource);
+        check(complete.dirty() && complete.serialized() == completeSource,
+              "Complete source Undo across Save restores exact original text");
+        complete.acceptSaved(completeSource);
+        complete.replaceSource("# source-only annotation\n" + completeSource);
+        check(complete.dirty() && complete.serialized().starts_with("# source-only annotation"),
+              "Comment-only source edits are dirty and persist");
+        auto reordered = complete.data();
+        reordered["scene"]["rooms"].push_back({{"id", "annex"}, {"label", "Annex"}});
+        complete.replaceData(reordered);
+        complete.acceptSaved(complete.serialized());
+        std::reverse(reordered["scene"]["rooms"].begin(), reordered["scene"]["rooms"].end());
+        complete.replaceData(reordered);
+        check(paper::content::parse(complete.serialized(), "reordered") == reordered,
+              "Reorder table arrays with nested tables");
+        reordered["scene"]["rooms"] = ContentValue::array();
+        complete.replaceData(reordered);
+        complete.acceptSaved(complete.serialized());
+        reordered["scene"]["rooms"].push_back({{"id", "new.room"}});
+        complete.replaceData(reordered);
+        check(paper::content::parse(complete.serialized(), "from-empty-sections") == reordered,
+              "Remove and recreate non-node scene sections across Save");
+        auto invalidVersion = complete.data();
+        invalidVersion["version"] = 3;
+        rejects([&] { complete.replaceData(invalidVersion); });
+        const std::string worldSource =
+            "# world comment\nformat='dcmo.world'\nversion=2\n"
+            "[world]\nentrySpawn='start' # destination\n"
+            "scenes=['boxes.dcscene']\nresources=['boxes.dcresources']\n"
+            "templates=[]\n";
+        auto authoredWorld = paper::content::parse(worldSource, "world");
+        auto changedWorld = authoredWorld;
+        changedWorld["world"]["scenes"].push_back("virtual.dcscene");
+        const auto patchedWorld =
+            paper::authoring::patchSource(worldSource, authoredWorld, changedWorld, "world");
+        check(patchedWorld.find("# destination") != std::string::npos &&
+                  paper::content::parse(patchedWorld, "world") == changedWorld,
+              "World manifest editing preserves authored fields and comments");
         const std::filesystem::path root = argc > 1 ? argv[1] : PAPER_EXAMPLE_ASSETS;
         const auto original = paper::content::read(root / "boxes.dcscene");
         auto edited = original;
@@ -127,6 +205,16 @@ int main(int argc, char** argv) {
               "Unsaved local transforms compile into world transforms");
         check(paper::content::read(root / "boxes.dcscene") == original,
               "Preview does not write authored files");
+        auto virtualScene = original;
+        virtualScene["scene"]["id"] = "virtual";
+        virtualScene["scene"]["nodes"] = ContentValue::array();
+        virtualScene["scene"]["spawns"] = ContentValue::array();
+        virtualScene["scene"]["rooms"] = ContentValue::array();
+        const auto virtualPackage =
+            paper::loadScenes(root, {material}, names, "world.dcworld",
+                              {{"world.dcworld", changedWorld}, {"virtual.dcscene", virtualScene}});
+        check(virtualPackage && !std::filesystem::exists(root / "virtual.dcscene"),
+              "Compile virtual new scenes before their first save");
         if (argc > 2) {
             size_t checked = 0;
             for (const auto& entry : std::filesystem::recursive_directory_iterator(argv[2])) {

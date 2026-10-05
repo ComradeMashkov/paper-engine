@@ -14,8 +14,10 @@ rotation in degrees, structured audio banks with audition, and visual UI asset
 design with an interactive layout preview. The Boxes project includes
 `settings.pui` and `example.pabank`; double-click them in the Project browser.
 Host-configured Play/Stop uses isolated snapshots and temporary saves. Its process
-lifecycle is tested with a fixture; real-game Play acceptance, human usability,
-recovery and import UI are still outstanding. No game logic runs in Scene view. See [the editor contract](docs/EDITOR.md).
+lifecycle is tested with a fixture. Autosave/crash recovery and journaled Save All
+cover scene and component drafts. Scene creation, rooms/lights/spawns/transitions and
+host-registered object/source authoring are available. Real-game Play acceptance,
+human usability and import UI are still outstanding. No game logic runs in Scene view. See [the editor contract](docs/EDITOR.md).
 
 ## Build
 
