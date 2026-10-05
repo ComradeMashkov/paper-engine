@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0-alpha.1+build.16] - 2026-10-05
+
+- Author spatial and nonspatial source modes in audio bank version 2; continue reading version 1 with its original spatial defaults. Expose the mode through the existing structured source editor.
+- Replace a decoded bank through the live SDL stream lock without reopening the device. Preserve mute and bus levels; reject malformed replacements before publication. Expose bank replacement and complete binding frames through the runtime facade.
+- Verification: audio-bank and editor-component tests passed in Release and ASan/UBSan, including version compatibility, shared placements and dummy-device replacement failure. All engine targets built in both configurations; no game was launched.
+- Compatibility: writers emit bank version 2, which older engines cannot read. Version 1 input remains supported. Already queued PCM can finish within device latency after a successful replacement.
+
 ## [0.12.0-alpha.1+build.15] - 2026-10-05
 
 - Add filtered feet-origin capsule placement queries for saved-player validation and moving collider clearance. Permit support contact within an explicit metre tolerance, reject malformed geometry and stale collider IDs, and retain owner-thread enforcement.

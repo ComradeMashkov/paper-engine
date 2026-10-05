@@ -126,6 +126,7 @@ void Audio::openMixer(std::unique_ptr<AudioMixer> mixer) {
     stream_.reset();
     mixer_ = std::move(mixer);
     mixer_->setMuted(muted());
+    mixer_->setMix(master_, volumes_);
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
         disable("Initialize audio");
         return;
@@ -167,6 +168,19 @@ SoundBank loadSoundBank(const std::filesystem::path& assets, const AudioBankDefi
 void Audio::openBank(const std::filesystem::path& assets, const AudioBankDefinition& bank) {
     auto pcm = loadSoundBank(assets, bank);
     openMixer(std::make_unique<AudioMixer>(bank.sounds, std::move(pcm)));
+}
+void Audio::replaceBank(const std::filesystem::path& assets, const AudioBankDefinition& bank) {
+    auto candidate = std::make_unique<AudioMixer>(bank.sounds, loadSoundBank(assets, bank));
+    candidate->setMuted(muted());
+    candidate->setMix(master_, volumes_);
+    if (stream_) {
+        StreamLock lock(stream_.get());
+        if (!lock)
+            throw std::runtime_error("Cannot lock audio stream for bank replacement");
+        mixer_.swap(candidate);
+    } else
+        mixer_.swap(candidate);
+    // Destroy the previous PCM/mixer after releasing the stream lock.
 }
 void Audio::apply(const AudioFrame& frame) noexcept {
     if (callbackFailed_) {
@@ -213,7 +227,9 @@ void Audio::setMuted(bool value) {
 }
 void Audio::setMix(float master, float ambience, float effects, float interfaceVolume,
                    float voices) noexcept {
+    master_ = master;
+    volumes_ = {ambience, effects, interfaceVolume, voices};
     if (StreamLock lock(stream_.get()); lock)
-        mixer_->setMix(master, {ambience, effects, interfaceVolume, voices});
+        mixer_->setMix(master_, volumes_);
 }
 } // namespace paper

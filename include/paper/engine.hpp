@@ -97,6 +97,8 @@ class Engine {
     void stopSound(SoundId effect) noexcept { audio_.stop(effect); }
     void stopWorldSounds() noexcept { audio_.stopWorld(); }
     void audio(const AudioScene& scene) { audio_.update(scene); }
+    void audioFrame(const AudioFrame& frame) noexcept { audio_.apply(frame); }
+    void replaceAudioBank(const AudioBankDefinition& bank) { audio_.replaceBank(assetPath_, bank); }
     void audioLoop(size_t slot, SoundId effect, SoundPlacement placement) noexcept {
         audio_.loop(slot, effect, placement);
     }

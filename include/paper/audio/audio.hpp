@@ -17,6 +17,9 @@ class Audio {
     explicit Audio(bool muted) noexcept : forcedMute_(muted) {}
     void open(const std::filesystem::path& assets, std::span<const SoundDefinition> definitions);
     void openBank(const std::filesystem::path& assets, const AudioBankDefinition& bank);
+    // Decode/validate on the owner thread, then swap under the existing stream lock.
+    // Failure retains the live bank. Success retires its voices and preserves mix/mute.
+    void replaceBank(const std::filesystem::path& assets, const AudioBankDefinition& bank);
     void apply(const AudioFrame& frame) noexcept;
     void play(SoundId effect, SoundPlacement placement = {}) noexcept;
     void stop(SoundId effect) noexcept;
@@ -39,6 +42,8 @@ class Audio {
     bool muted_ = false, forcedMute_ = false;
     std::atomic<bool> callbackFailed_{false};
     std::unique_ptr<AudioMixer> mixer_;
+    float master_ = 1;
+    std::array<float, busCount> volumes_{1, 1, 1, 1};
     // Destroy/join the callback before its mixer and error flag are destroyed.
     sdl::AudioStream stream_;
 };

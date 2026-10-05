@@ -1,15 +1,20 @@
 # Audio banks, bindings and acoustic zones
 
-`Paper::Audio` accepts editable `paper.audio` TOML banks (`.pabank`, version 1).
+`Paper::Audio` accepts editable `paper.audio` TOML banks (`.pabank`, version 2).
+Version 1 remains readable with spatial source defaults; writers emit version 2.
 `parseAudioBank`, `writeAudioBank`, `loadAudioBank` and `validateAudioBank` validate
 unknown keys, IDs, references, ranges and capacities. Definition edits require
 no recompilation. `EngineConfig::audioBankFile` opts into a bank relative to the
 asset root; existing `sounds` configuration stays supported. The bank is selected
-at engine construction, or replaced explicitly through `Audio::openBank`.
+at engine construction. `Audio::replaceBank` and `Engine::replaceAudioBank`
+prepare and decode a candidate before swapping it under the live stream lock.
+They preserve the device, mute and bus levels; a rejected candidate retains the
+working bank. Already queued PCM can finish within device latency. `openBank`
+remains available when opening a new device is intended.
 
 ```toml
 format = "paper.audio"
-version = 1
+version = 2
 [bank]
 [[bank.sounds]]
 id = "motor.hum"
@@ -24,6 +29,7 @@ sound = "motor.hum"
 node = "machine"
 offset = [0, 0.5, 0]
 range = 12
+spatial = true
 [[bank.zones]]
 id = "workshop"
 center = [0, 2, 0]
@@ -73,7 +79,12 @@ transform. A missing node silences its loop; `event` returns no placement. Event
 are resolved on demand, loops in each `frame`. Unbinding clears a slot on the
 next frame. The instance ID remains stable while the host manages its lifetime.
 
-Call `AudioBindings::frame(scene, resolver, dt)`, then `Audio::apply(frame)`.
+Set `spatial = false` for a nonspatial bed. Source offsets still follow their
+bound node, while the mixer omits distance, panning and barrier attenuation.
+Version 1 banks reject an explicit `spatial` property rather than reinterpreting it.
+
+Call `AudioBindings::frame(scene, resolver, dt)`, then `Audio::apply(frame)` or
+`Engine::audioFrame(frame)`.
 The complete scene/loop snapshot is submitted under one SDL stream lock.
 Positions, banks and strings are prepared on the host thread. The PCM callback
 performs no file access, allocation or scene traversal.

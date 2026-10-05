@@ -57,6 +57,22 @@ ambience="hum"
     const auto restored = parseAudioBank(writeAudioBank(bank));
     check(restored.sounds[0].file == "machine/hum" && restored.zones[0].wet == bank.zones[0].wet,
           "bank writer round trip");
+    {
+        auto flat = bank;
+        flat.sources[0].spatial = false;
+        const auto document = writeAudioBank(flat);
+        check(content::parse(document, "v2 bank fixture").at("version") == 2 &&
+                  !parseAudioBank(document).sources[0].spatial,
+              "bank v2 round trips nonspatial beds while v1 sources retain spatial defaults");
+        AudioBindings nonspatial(flat);
+        const auto event = nonspatial.event(
+            "motor", [](auto) { return std::optional{MeshTransform{{2, 0, 0}, {}}}; });
+        check(event && !event->placement.spatial, "nonspatial mode reaches the shared placement");
+        auto legacy = content::parse(document, "v1 bank fixture");
+        legacy["version"] = 1;
+        check(rejects([&] { (void)parseAudioBank(content::encode(legacy)); }),
+              "v1 cannot silently reinterpret explicit v2 source modes");
+    }
     AudioBindings bindings(bank);
     bindings.bind("second", "motor", "two");
     const auto resolve = [](std::string_view node) -> std::optional<MeshTransform> {
@@ -179,9 +195,19 @@ ambience="hum"
             Audio device(false);
             device.openBank(root, decoded);
             check(device.available(), "strict bank opens the dummy SDL audio device");
+            device.setMuted(true);
+            device.setMix(.3f, .2f, .4f, .5f, .6f);
+            auto replacement = decoded;
+            replacement.sounds[0].id = "replacement";
+            device.replaceBank(root, replacement);
+            check(device.available() && device.muted(),
+                  "validated replacement retains live stream and mute state");
             std::ofstream(root / "audio" / "tone-1.wav", std::ios::trunc) << "invalid WAV";
             check(rejects([&] { device.openBank(root, decoded); }) && device.available(),
                   "malformed replacement fails before changing a live stream");
+            check(rejects([&] { device.replaceBank(root, decoded); }) && device.available() &&
+                      device.muted(),
+                  "invalid hot replacement retains the live bank and mute");
         }
         decoded.sounds[0].variants = 2;
         wave(root / "audio" / "tone-1.wav");

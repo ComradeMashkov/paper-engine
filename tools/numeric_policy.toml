@@ -45,7 +45,7 @@ literal_sha256 = "2a12545bd660be15121f97d79bba0a7d60fd0ff745e31813dc53b2f96abfe3
 
 ["tests/audio/bank_tests.cpp"]
 reason = "Independent source/zone positions, capacity counts, hand-authored RIFF PCM bytes, resampling range, malformed replacements and echo-decay thresholds verify the bank contract independently of defaults."
-literal_sha256 = "3c4cafb4e782a402ae66fa787a6783edeee400126a52af50579a9e264d0c4683"
+literal_sha256 = "1a6073c9325c827f5d24ee65bd438ee975abec27b1b4d8de30bb37566728993b"
 
 ["tests/editor/audio_bank_tests.cpp"]
 reason = "Independent editable source bytes and temporary-file scenarios exercise no-op/comment preservation, invalid edits and external-change protection without launching a game."
