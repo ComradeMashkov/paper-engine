@@ -1,4 +1,5 @@
 #include "paper/content/document.hpp"
+#include "paper/content/strings.hpp"
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -86,11 +87,39 @@ void typedValues() {
               base.at("array").empty() && !original.at("table").at("change").get<bool>(),
           "overrides must recursively merge tables, replace arrays and leave snapshots intact");
 }
+void stringTables() {
+    const auto grouped = content::parse(R"toml(
+[strings.menu]
+"menu.start" = "Начать"
+[strings.items]
+"item.key" = "Ключ {number}"
+)toml",
+                                        "strings.toml");
+    const auto strings = content::stringTable(grouped.at("strings"));
+    constexpr size_t expectedStrings = 2;
+    check(strings.size() == expectedStrings && strings.at("menu.start") == "Начать" &&
+              strings.at("item.key") == "Ключ {number}",
+          "Categories retain full IDs and own Unicode strings");
+    check(content::stringTable(
+              content::parse(content::encode(grouped), "roundtrip.toml").at("strings")) == strings,
+          "Grouped source survives the common writer unchanged semantically");
+    rejects(
+        [] {
+            (void)content::stringTable(
+                ContentValue{{"a", {{"same", "one"}}}, {"b", {{"same", "two"}}}});
+        },
+        "Duplicate IDs in different categories were accepted");
+    rejects([] { (void)content::stringTable(ContentValue{{"a", {{"nested", {{"id", "text"}}}}}}); },
+            "Unexpected nested category accepted");
+    rejects([] { (void)content::stringTable(ContentValue{{"id", false}}); },
+            "Non-string entry accepted");
+}
 } // namespace
 int main() {
     try {
         documents();
         typedValues();
+        stringTables();
         std::cout << "Native document checks passed\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

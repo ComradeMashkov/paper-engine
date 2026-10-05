@@ -3,8 +3,8 @@
 namespace paper::ui {
 namespace {
 using V = ContentValue;
-constexpr std::array<std::string_view, 6> kinds{"panel",  "label",  "button",
-                                                "toggle", "slider", "list"};
+constexpr std::array<std::string_view, 7> kinds{"panel",  "label", "button", "toggle",
+                                                "slider", "list",  "region"};
 constexpr std::array<std::string_view, 4> aligns{"start", "center", "end", "stretch"};
 void require(bool condition, const char* message) {
     if (!condition)
@@ -137,9 +137,10 @@ Document readDocument(const ContentValue& value) {
     std::map<std::string, std::vector<std::string>, std::less<>> children;
     const auto root = data.at("root").get<std::string>();
     for (const auto& v : nodes) {
-        keys(v, {"id",      "parent", "kind",    "text",    "tooltip", "enabled", "visible",
-                 "checked", "value",  "minimum", "maximum", "step",    "items",   "direction",
-                 "align",   "scroll", "gap",     "padding", "width",   "height"});
+        keys(v,
+             {"id",    "parent",  "kind",    "text",   "tooltip", "enabled",   "visible", "checked",
+              "value", "minimum", "maximum", "step",   "items",   "direction", "align",   "scroll",
+              "gap",   "padding", "width",   "height", "bounds",  "properties"});
         Node n;
         n.id = v.at("id").get<std::string>();
         const auto kind = v.at("kind").get<std::string>();
@@ -155,6 +156,16 @@ Document readDocument(const ContentValue& value) {
         n.minimum = v.value("minimum", n.minimum);
         n.maximum = v.value("maximum", n.maximum);
         n.step = v.value("step", n.step);
+        if (v.contains("bounds")) {
+            const auto& b = v.at("bounds");
+            constexpr size_t rectangleComponents = 4;
+            require(b.is_array() && b.size() == rectangleComponents,
+                    "Expected UI bounds [x, y, width, height]");
+            n.layout.bounds = Rect{number(b[0]), number(b[1]), number(b[2]),
+                                   number(b[3])}; // numbers: rectangle wire order x/y/width/height.
+        }
+        n.properties = v.value("properties", V::object());
+        require(n.properties.is_object(), "Expected UI properties table");
         if (v.contains("items")) {
             require(v.at("items").is_array(), "Expected UI list items");
             for (const auto& item : v.at("items"))
@@ -234,6 +245,12 @@ ContentValue documentValue(const Document& document) {
                                   n.layout.padding.right, n.layout.padding.bottom})},
             {"width", dimension(n.layout.width)},
             {"height", dimension(n.layout.height)}};
+        if (n.layout.bounds) {
+            const auto b = *n.layout.bounds;
+            v["bounds"] = V::array({b.x, b.y, b.w, b.h});
+        }
+        if (!n.properties.empty())
+            v["properties"] = n.properties;
         for (const auto& item : n.items)
             v["items"].elements().push_back(item);
         nodes.elements().push_back(std::move(v));

@@ -2,6 +2,19 @@
 #include "paper/engine.hpp"
 #include <limits>
 namespace paper::ui {
+ScopedClip::ScopedClip(Engine& engine, Rect clip) : engine_(engine), previous_(engine.clipRect()) {
+    if (previous_) {
+        const auto p = *previous_;
+        const float x = std::max(clip.x, p.x), y = std::max(clip.y, p.y);
+        clip = {x, y, std::max(0.f, std::min(clip.x + clip.w, p.x + p.w) - x),
+                std::max(0.f, std::min(clip.y + clip.h, p.y + p.h) - y)};
+    }
+    if (!engine_.setClipRect(clip))
+        throw std::runtime_error("Cannot apply UI clipping");
+}
+ScopedClip::~ScopedClip() {
+    (void)engine_.setClipRect(previous_);
+}
 namespace {
 int pixels(float value) {
     if (!std::isfinite(value) || value <= 0 ||
@@ -47,6 +60,10 @@ std::vector<Input> engineInput(const paper::Input& frame, float wheelPixels) {
             return Key::End;
         case SDLK_ESCAPE:
             return Key::Escape;
+        case SDLK_PAGEUP:
+            return Key::PageUp;
+        case SDLK_PAGEDOWN:
+            return Key::PageDown;
         default:
             return {};
         }

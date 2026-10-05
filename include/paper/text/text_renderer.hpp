@@ -1,5 +1,6 @@
 #pragma once
 #include "paper/render/draw_types.hpp"
+#include "paper/text/font_weight.hpp"
 #include "paper/text/parameters.hpp"
 #include <SDL3/SDL_render.h>
 #include <array>
@@ -11,7 +12,7 @@
 #include <vector>
 
 namespace paper {
-enum class FontWeight { Regular, Bold, Handwritten, Count };
+
 class TextRenderer {
   public:
     TextRenderer(SDL_Renderer& renderer, const std::filesystem::path& regular,

@@ -1,3 +1,5 @@
+#include "paper/ui/document.hpp"
+#include "paper/ui/scroll_area.hpp"
 #include "paper/ui/ui.hpp"
 #include <iostream>
 using namespace paper;
@@ -186,6 +188,59 @@ int main() {
     const std::array<paper::ui::Input, 1> emptyInput{{{InputType::Key, {}, 0, Key::Enter}}};
     check(atomicLayout.draw().empty() && atomicLayout.input(emptyInput).empty(),
           "hidden root accepts input without stale focus or draw commands");
+    {
+        Document authored;
+        authored.viewport = {400, 300};
+        authored.root.id = "canvas";
+        authored.root.layout.padding = {10, 20, 0, 0};
+        Node region;
+        region.id = "preview";
+        region.kind = Kind::Region;
+        region.layout.bounds = Rect{30, 40, 100, 80};
+        region.properties = {{"fontPixels", 25}, {"resource", "illustration.png"}};
+        Node action = button;
+        action.visible = true;
+        action.id = "authored.action";
+        action.layout.bounds = Rect{30, 40, 100, 80};
+        authored.root.children = {action, region};
+        auto restored = parseDocument(writeDocument(authored));
+        check(documentValue(restored) == documentValue(authored),
+              "Absolute regions and owning host properties survive native round-trip");
+        context.setTree(restored.root);
+        context.layout({0, 0, 400, 300});
+        const auto b = context.box("preview").bounds;
+        check(b.x == 40 && b.y == 60 && b.w == 100 && b.h == 80,
+              "Authored coordinates are relative to padded parent bounds");
+        const auto activation = send({{InputType::Down, {50, 70}}, {InputType::Up, {50, 70}}});
+        check(activation.size() == 1 && activation.front().id == "authored.action",
+              "Host preview regions do not intercept shared buttons");
+        (void)send({{InputType::Down, {50, 70}}});
+        restored.root.children[0].layout.bounds->x += 1;
+        context.setTree(restored.root);
+        check(context.capture().empty() && send({{InputType::Up, {50, 70}}}).empty(),
+              "Replacing authored geometry cancels a stale release");
+        restored.root.children[1].layout.bounds->w = -1;
+        check(rejects([&] { (void)writeDocument(restored); }), "Reject negative authored extents");
+        ScrollArea scroll;
+        scroll.layout({20, 30, 100, 80}, 300, "paragraph");
+        check(scroll.input({InputType::Wheel, {30, 40}, 50}) && scroll.offset() == 50,
+              "Host scrolling uses logical pixels within its authored region");
+        scroll.layout({20, 30, 100, 80}, 400, "paragraph");
+        check(scroll.offset() == 50, "Reflow and content reload preserve the scroll position");
+        check(!scroll.input({InputType::Wheel, {500, 500}, 40}),
+              "Wheel outside a region cannot change its scroll position");
+        check(scroll.input({InputType::Key, {}, 0, Key::PageDown}, true) && scroll.offset() == 130,
+              "Keyboard paging reveals complete long content");
+        scroll.layout({20, 30, 100, 80}, 100, "paragraph");
+        check(scroll.offset() == 20, "Shorter translations clamp the existing scroll position");
+        scroll.layout({20, 30, 100, 80}, 400, "another target");
+        check(scroll.offset() == 0, "A different target does not inherit old scrolling");
+        scroll.reveal({20, 230, 100, 20});
+        check(scroll.offset() == 140, "Keyboard selection can reveal a clipped dynamic action");
+        check(rejects([&] { scroll.layout({0, 0, 0, 80}, 300, "invalid"); }) &&
+                  scroll.offset() == 140,
+              "Rejected scroll layout preserves published state");
+    }
     std::cout << "UI failures=" << failures << '\n';
     return failures ? 1 : 0;
 }

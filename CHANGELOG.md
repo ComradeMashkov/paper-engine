@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.16.0-alpha.1+build.20] - 2026-10-05
+
+- Add authored, input-transparent Region nodes, parent-relative bounds and owning host properties to native UI documents. Preserve them in the writer, designer, Inspector, Save All and recovery. Existing version-1 documents remain readable; documents using the additive fields require this engine.
+- Add retained device-free ScrollArea, keyboard paging and nested ScopedClip for host-painted content. Cancel stale widget capture when geometry changes while retaining valid capture across repaint.
+- Render unsupported directional arrow glyphs with measured vector fallbacks; keep text values unchanged. Keep font-weight data independent of SDL devices.
+- Verification: all standalone targets built and all 18 CTest cases passed in Release and ASan/UBSan, including Metal/GPU, categorized document round trips, region/capture/scroll regressions and editor storage/recovery. The native Boxes workspace passed in both configurations. The host Release suite passed all 47 cases. No game/Lua dependency is introduced.
+
+## [0.15.0-alpha.1+build.19] - 2026-10-05
+
+- Add an owning categorized string-table reader shared by runtime hosts and editor labels.
+  Category names never change complete text IDs; duplicate IDs across categories,
+  empty text and nested/non-string entries are rejected. Flat tables remain readable.
+- Keep native writer semantics and editor source/save/recovery paths. No game or Lua
+  dependencies were introduced.
+- Verification: Release host build and the existing document tests compiled; grouped
+  Unicode/writer and rejection regressions added. Full final verification is recorded
+  in the subsequent task entry; no platform or human acceptance is implied here.
+
 ## [0.14.0-alpha.1+build.18] - 2026-10-05
 
 - Provide `Paper::AudioCore` for bank definitions, bindings, acoustic zones and PCM mixing without SDL/Qt. Keep the existing `Paper::Audio` facade and functionality for device/WAV consumers. Headless game sessions can validate editable audio without acquiring a platform dependency.

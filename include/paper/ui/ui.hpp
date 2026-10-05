@@ -1,4 +1,5 @@
 #pragma once
+#include "paper/core/content_value.hpp"
 #include "paper/core/math3d.hpp"
 #include "paper/render/draw_types.hpp"
 #include <functional>
@@ -9,7 +10,7 @@
 #include <string>
 #include <vector>
 namespace paper::ui {
-enum class Kind { Panel, Label, Button, Toggle, Slider, List };
+enum class Kind { Panel, Label, Button, Toggle, Slider, List, Region };
 enum class Direction { Row, Column };
 enum class Align { Start, Center, End, Stretch };
 struct Dimension {
@@ -26,6 +27,9 @@ struct Layout {
     Direction direction = Direction::Column;
     Align align = Align::Stretch;
     bool scroll = false;
+    // Optional placement relative to the parent's padded content origin. Such
+    // children do not consume flow space. Regions can host external painting/3D.
+    std::optional<Rect> bounds;
 };
 struct Node {
     std::string id, text, tooltip;
@@ -35,6 +39,9 @@ struct Node {
     double value = 0, minimum = 0, maximum = 1, step = .01;
     std::vector<std::string> items;
     std::vector<Node> children;
+    // Owning, round-tripped host presentation data. The host validates its schema;
+    // the engine/editor never execute it or infer game-specific actions.
+    ContentValue properties = ContentValue::object();
 };
 struct Theme {
     Color background{35, 35, 38}, surface{55, 55, 60}, hover{75, 75, 82}, pressed{90, 90, 100},
@@ -43,7 +50,7 @@ struct Theme {
           tooltipDelaySeconds = .6f;
 };
 enum class InputType { Move, Down, Up, Wheel, Key, Cancel, FocusLost };
-enum class Key { Tab, Enter, Space, Left, Right, Up, Down, Home, End, Escape };
+enum class Key { Tab, Enter, Space, Left, Right, Up, Down, Home, End, Escape, PageUp, PageDown };
 struct Input {
     InputType type;
     Vec2 position;

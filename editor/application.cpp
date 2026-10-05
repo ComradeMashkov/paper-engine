@@ -3,6 +3,7 @@
 #include "paper/authoring/document.hpp"
 #include "paper/authoring/source.hpp"
 #include "paper/content/document.hpp"
+#include "paper/content/strings.hpp"
 #include "paper/physics/scene.hpp"
 #include "paper/scenes/transforms.hpp"
 #include "play_controller.hpp"
@@ -163,8 +164,7 @@ struct Project {
         }
         if (spec.contains("strings")) {
             const auto strings = readSource(files.resolve(spec.at("strings").get<std::string>()));
-            for (const auto& [id, value] : strings.at("strings").items())
-                labels.emplace(id, value.get<std::string>());
+            labels = content::stringTable(strings.at("strings"));
         }
     }
     SceneDocuments snapshot() const {
