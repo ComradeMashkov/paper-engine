@@ -545,10 +545,12 @@ std::vector<Draw> Context::draw() const {
         const bool enabled = enabled_.at(id);
         const auto foreground = enabled ? theme_.text : theme_.disabled;
         if (n.kind != Kind::Label) {
-            const auto color = enabled && capture_ == id ? theme_.pressed
-                               : enabled && hover_ == id ? theme_.hover
-                               : n.kind == Kind::Panel   ? theme_.background
-                                                         : theme_.surface;
+            // Containers keep their authored background even under the pointer;
+            // hover/press styling belongs to interactive controls.
+            const auto color = n.kind == Kind::Panel       ? theme_.background
+                               : enabled && capture_ == id ? theme_.pressed
+                               : enabled && hover_ == id   ? theme_.hover
+                                                           : theme_.surface;
             add(Draw::Type::Fill, b, box.clip, color);
         }
         if (focus_ == id)

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.16.1-alpha.1+build.21] - 2026-10-05
+
+- Preserve the authored background of container panels under the pointer. Transparent host layers no longer receive an opaque control hover tint and cover the host-painted frame. Interactive controls retain hover/press styling.
+- Verification: all standalone targets built and all 18 CTest cases passed in Release and ASan/UBSan, including Metal/GPU and pointer-origin/movement regressions. The native Boxes editor workspace passed in both configurations; freshly captured host title/dialogue frames were inspected. Version, numeric ownership, formatting and whitespace checks passed. Content formats are unchanged.
+
 ## [0.16.0-alpha.1+build.20] - 2026-10-05
 
 - Add authored, input-transparent Region nodes, parent-relative bounds and owning host properties to native UI documents. Preserve them in the writer, designer, Inspector, Save All and recovery. Existing version-1 documents remain readable; documents using the additive fields require this engine.
