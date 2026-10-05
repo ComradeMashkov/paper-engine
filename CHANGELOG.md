@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.13.1-alpha.1+build.17] - 2026-10-05
+
+- Keep a slider's grab offset when its thumb is pressed off centre; apply the final release coordinate before ending capture. Preserve track-click snapping, quantization and cancellation.
+- Verification: all engine targets built in Release and ASan/UBSan. Shared UI tests passed in both configurations, including off-centre grabs, final release and cancellation.
+
 ## [0.13.0-alpha.1+build.16] - 2026-10-05
 
 - Author spatial and nonspatial source modes in audio bank version 2; continue reading version 1 with its original spatial defaults. Expose the mode through the existing structured source editor.

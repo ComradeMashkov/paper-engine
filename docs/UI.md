@@ -28,7 +28,8 @@ Lists return selection actions. `setValue` and `setChecked` update values withou
 rebuilding a tree; the host owns persistence and reactions to actions.
 
 Pointer capture lasts until release/cancel/focus loss. Buttons activate only on
-release over the captured control. Sliders keep dragging outside their bounds.
+release over the captured control. Sliders keep dragging outside their bounds,
+preserve off-centre thumb grabs and apply the final release coordinate.
 Tab/Shift-Tab navigate enabled controls; Enter/Space activate buttons/toggles.
 Arrow/Home/End keys adjust sliders and lists. Repeated discrete activation is
 suppressed. Escape, resize, debug input capture and lost focus cancel dragging.

@@ -179,6 +179,7 @@ Vec2 Context::preferred(const Node& n, float availableWidth) const {
 }
 void Context::cancel() {
     capture_.clear();
+    sliderGrabOffset_ = 0;
 }
 void Context::layout(Rect viewport) {
     require(root_ && rectangle(viewport), "Invalid UI viewport/tree");
@@ -356,7 +357,9 @@ void Context::slider(Node& n, Vec2 pointer, std::vector<Action>& result) {
     if (width <= 0)
         return; // numbers: inset at both ends of slider.
     const double fraction = std::clamp(
-        (pointer.x - b.x - theme_.inset - theme_.thumbPixels * centreFraction) / width, 0.f,
+        (pointer.x - sliderGrabOffset_ - b.x - theme_.inset - theme_.thumbPixels * centreFraction) /
+            width,
+        0.f,
         1.f); // numbers: pointer tracks thumb centre.
     const double value =
         fraction <= 0 ? n.minimum
@@ -399,8 +402,17 @@ std::vector<Action> Context::input(std::span<const Input> events) {
             if (!hover_.empty() && enabled_.at(hover_) && interactive(nodes_.at(hover_)->kind)) {
                 focus_ = capture_ = hover_;
                 auto& n = *nodes_.at(capture_);
-                if (n.kind == Kind::Slider)
+                if (n.kind == Kind::Slider) {
+                    const auto b = boxes_.at(n.id).bounds;
+                    const float width = b.w - insetSides * theme_.inset - theme_.thumbPixels;
+                    const float centre =
+                        b.x + theme_.inset + theme_.thumbPixels * centreFraction +
+                        width * static_cast<float>((n.value - n.minimum) / (n.maximum - n.minimum));
+                    if (std::abs(pointer_.x - centre) <=
+                        theme_.inset + theme_.thumbPixels * centreFraction)
+                        sliderGrabOffset_ = pointer_.x - centre;
                     slider(n, pointer_, result);
+                }
             }
         } else if (e.type == InputType::Move && !capture_.empty()) {
             auto& n = *nodes_.at(capture_);
@@ -408,6 +420,8 @@ std::vector<Action> Context::input(std::span<const Input> events) {
                 slider(n, pointer_, result);
         } else if (e.type == InputType::Up && !capture_.empty()) {
             const auto id = capture_;
+            if (auto& n = *nodes_.at(id); n.kind == Kind::Slider)
+                slider(n, pointer_, result);
             cancel();
             if (hover_ == id && enabled_.at(id)) {
                 auto& n = *nodes_.at(id);

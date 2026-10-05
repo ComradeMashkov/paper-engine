@@ -53,7 +53,7 @@ literal_sha256 = "7df9c0c4617fa42da373dcd6bfbd364c3b083887a77c173870f745a2790579
 
 ["tests/ui/ui_tests.cpp"]
 reason = "Independent logical-pixel, text-width, input-coordinate and slider/list fixtures verify flex bounds, clipping, wrapped height, capture/focus, scroll visibility and transactional layout."
-literal_sha256 = "93b4044651d5b0b3fd8d43c6e145439ec44bf262c7ed0aa7e0ced87ae1914f27"
+literal_sha256 = "9f197261ce8996f00fc94b66d2a4b22828dd98175780a80b9c5aa20b54eeae50"
 
 ["tests/ui/input_tests.cpp"]
 reason = "Independent ordered SDL edge/modifier/wheel samples verify host-to-UI event translation, repeat and focus/debug cancellation without constructing an application."

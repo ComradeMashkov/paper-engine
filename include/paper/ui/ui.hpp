@@ -109,7 +109,7 @@ class Context {
     std::vector<std::string> order_, tabOrder_;
     std::string focus_, capture_, hover_;
     Vec2 pointer_{};
-    float hoverSeconds_ = 0;
+    float hoverSeconds_ = 0, sliderGrabOffset_ = 0;
     bool laidOut_ = false;
 };
 } // namespace paper::ui
