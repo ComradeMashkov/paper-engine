@@ -12,6 +12,10 @@ both `(a.category & b.mask)` and `(b.category & a.mask)` must be nonzero.
 Stable collider IDs survive pose updates and are never reused. Boxes and static
 triangle meshes bake axis scale/shear into their shapes; `move` updates only the
 rigid position/rotation. Recreate a collider when changing its baked geometry.
+`overlapsCapsule` tests an upright feet-origin capsule with the same reciprocal filters.
+It permits touching support (default numerical tolerance 0.001 m) and can restrict
+the query to one live collider for moving-door clearance. Invalid dimensions,
+tolerance and stale IDs fail explicitly. Queries do not alter a character or world.
 Use triangle winding consistently; meshes represent surfaces, not solid volumes.
 
 DCMO 3 accepts `collision = { shape="bounds", category=1, mask=4294967295 }` or

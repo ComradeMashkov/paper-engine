@@ -40,8 +40,8 @@ reason = "Independent analytic rotation, anisotropic normal, sheared hierarchy, 
 literal_sha256 = "f54d42bcc34225fbad12b32eb810e40865c61d8b546fd9708d791400b42dcaf3"
 
 ["tests/physics/world_tests.cpp"]
-reason = "Independent metre/time/layer fixtures verify steps, steep slopes, clearance, continuous sweeps, scene rollback, capacity, overflowing geometry and v3 template inheritance without depending on implementation defaults."
-literal_sha256 = "b50e16dac470dbaa9b5f757a0df0b1e1e39196f7f4e32102785b537c47842d76"
+reason = "Independent metre/time/layer fixtures verify steps, steep slopes, clearance, continuous sweeps, scene rollback, capacity, overflowing geometry, v3 template inheritance and filtered capsule placements without depending on implementation defaults."
+literal_sha256 = "2a12545bd660be15121f97d79bba0a7d60fd0ff745e31813dc53b2f96abfe39a"
 
 ["tests/audio/bank_tests.cpp"]
 reason = "Independent source/zone positions, capacity counts, hand-authored RIFF PCM bytes, resampling range, malformed replacements and echo-decay thresholds verify the bank contract independently of defaults."

@@ -5,7 +5,9 @@
 namespace paper {
 namespace physicsLimits {
 inline constexpr size_t triangles = 50000;
-}
+// Metres: ignore numerical contact noise when testing saved placements.
+inline constexpr float placementToleranceMeters = .001f;
+} // namespace physicsLimits
 using ColliderId = std::uint32_t;
 struct CollisionFilter {
     std::uint32_t category = 1, mask = ~std::uint32_t{0};
@@ -38,6 +40,12 @@ class PhysicsWorld {
     void remove(ColliderId id);
     [[nodiscard]] std::optional<CollisionHit> raycast(Vec3 origin, Vec3 direction, float distance,
                                                       CollisionFilter filter = {}) const;
+    // Feet-origin upright capsule. Touching support is allowed; penetration beyond tolerance
+    // is blocked. Optionally restrict the query to one live collider (e.g. a moving door).
+    [[nodiscard]] bool
+    overlapsCapsule(Vec3 feet, float radiusMeters, float heightMeters, CollisionFilter filter = {},
+                    std::optional<ColliderId> only = {},
+                    float toleranceMeters = physicsLimits::placementToleranceMeters) const;
 
   private:
     struct State;

@@ -9,6 +9,7 @@
 #include <Jolt/Physics/Body/BodyLock.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/CollideShape.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
@@ -80,11 +81,14 @@ class PairFilter final : public JPH::ObjectLayerPairFilter {
 };
 class QueryFilter final : public JPH::BodyFilter {
   public:
-    explicit QueryFilter(CollisionFilter f) : filter(f) {}
+    explicit QueryFilter(CollisionFilter f, std::optional<JPH::BodyID> body = {})
+        : filter(f), only(body) {}
+    bool ShouldCollide(const JPH::BodyID& body) const override { return !only || body == *only; }
     bool ShouldCollideLocked(const JPH::Body& body) const override {
         return filter.accepts(unpacked(body.GetUserData()));
     }
     CollisionFilter filter;
+    std::optional<JPH::BodyID> only;
 };
 JPH::RefConst<JPH::Shape> checked(const JPH::Shape::ShapeResult& result) {
     if (result.HasError())
@@ -236,6 +240,38 @@ std::optional<CollisionHit> PhysicsWorld::raycast(Vec3 origin, Vec3 direction, f
                 id, point, p(lock.GetBody().GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, j(point))),
                 distance * hit.mFraction};
     throw std::logic_error("Ray hit an unregistered collider");
+}
+bool PhysicsWorld::overlapsCapsule(Vec3 feet, float radius, float height, CollisionFilter filter,
+                                   std::optional<ColliderId> only, float tolerance) const {
+    state_->check();
+    validFilter(filter);
+    if (!coordinate(feet) || !std::isfinite(radius) || !std::isfinite(height) ||
+        !std::isfinite(tolerance) || radius <= 0 || height * capsuleCentreFraction < radius ||
+        height > maximumHeight || tolerance < 0 || tolerance > radius ||
+        !coordinate(feet + Vec3{0, height, 0}))
+        throw std::invalid_argument("Invalid capsule placement query");
+    // numbers: total capsule height contains two hemispheres; its centre is half above feet.
+    JPH::CapsuleShape shape(height * capsuleCentreFraction - radius, radius);
+    class Collector final : public JPH::CollideShapeCollector {
+      public:
+        explicit Collector(float threshold) : tolerance(threshold) {}
+        void AddHit(const JPH::CollideShapeResult& hit) override {
+            if (hit.mPenetrationDepth > tolerance) {
+                blocked = true;
+                ForceEarlyOut();
+            }
+        }
+        float tolerance;
+        bool blocked = false;
+    } collector(tolerance);
+    QueryFilter query(filter, only ? std::optional{state_->bodies.at(*only)} : std::nullopt);
+    const auto centre = j(feet + Vec3{0, height * capsuleCentreFraction, 0});
+    JPH::CollideShapeSettings settings;
+    settings.mBackFaceMode = JPH::EBackFaceMode::CollideWithBackFaces;
+    state_->physics.GetNarrowPhaseQuery().CollideShape(&shape, JPH::Vec3::sReplicate(1),
+                                                       JPH::RMat44::sTranslation(centre), settings,
+                                                       centre, collector, {}, {}, query);
+    return collector.blocked;
 }
 struct CharacterController::Impl {
     std::shared_ptr<PhysicsWorld::State> world;

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.0-alpha.1+build.15] - 2026-10-05
+
+- Add filtered feet-origin capsule placement queries for saved-player validation and moving collider clearance. Permit support contact within an explicit metre tolerance, reject malformed geometry and stale collider IDs, and retain owner-thread enforcement.
+- Verification: physics tests passed in Release and ASan/UBSan, including low ceilings, support contact, reciprocal layers and moved/removed colliders. Version, numeric ownership and whitespace checks passed.
+- Compatibility: additive Qt/SDL-independent physics API; content and save formats are unchanged.
+
 ## [0.11.1-alpha.1+build.14] - 2026-10-05
 
 - Initialize missing interaction bounds from the selected resource when a host component is attached; preserve authored bounds.
