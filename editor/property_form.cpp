@@ -9,6 +9,7 @@
 #include <QPlainTextEdit>
 #include <QSizePolicy>
 #include <array>
+#include <cmath>
 namespace paper::editor {
 namespace {
 constexpr int numberDecimals = 6, listEditorHeight = 100;
@@ -102,11 +103,7 @@ PropertyForm::Read PropertyForm::field(const std::string& path, const ContentVal
     }
     const bool maximum = path == "width.maximum" || path == "height.maximum";
     if (value.is_number() || maximum) {
-        constexpr std::array<std::string_view, 6> vectors{"center.",   "half.",    "offset.",
-                                                          "rotation.", "padding.", "viewport."};
-        const bool integral =
-            value.is_number_integer() &&
-            !std::ranges::any_of(vectors, [&](auto prefix) { return path.starts_with(prefix); });
+        const bool integral = value.is_number_integer();
         auto* spin = new QDoubleSpinBox(parent);
         // Float ranges must not force a field as wide as the longest possible value.
         constexpr int integerMinimumWidth = 60, realMinimumWidth = 90;
@@ -116,7 +113,9 @@ PropertyForm::Read PropertyForm::field(const std::string& path, const ContentVal
         const auto limit = integral ? double(std::numeric_limits<uint32_t>::max())
                                     : double(std::numeric_limits<float>::max());
         spin->setRange(maximum ? -1 : -limit, limit);
-        spin->setDecimals(integral ? 0 : numberDecimals);
+        // Authored integral geometry/angles still permit fractional edits. Domain
+        // validators reject fractions for actual counts; untouched values keep their type.
+        spin->setDecimals(numberDecimals);
         spin->setValue(value.is_number() ? value.get<double>() : -1);
         if (maximum)
             spin->setSpecialValueText(tr("Unlimited"));
@@ -126,8 +125,9 @@ PropertyForm::Read PropertyForm::field(const std::string& path, const ContentVal
                 return original;
             if (maximum && spin->value() < 0)
                 return ContentValue("unlimited");
-            return integral ? ContentValue(static_cast<int64_t>(spin->value()))
-                            : ContentValue(spin->value());
+            return integral && std::floor(spin->value()) == spin->value()
+                       ? ContentValue(static_cast<int64_t>(spin->value()))
+                       : ContentValue(spin->value());
         };
     }
     if (value.is_string()) {

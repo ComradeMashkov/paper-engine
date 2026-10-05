@@ -25,6 +25,7 @@ class Viewport final : public QWidget {
     void grid(bool enabled) { grid_ = enabled; }
     void snap(bool enabled) { snap_ = enabled; }
     void collisions(bool enabled) { collisions_ = enabled; }
+    void sceneData(bool enabled) { sceneData_ = enabled; }
     void audio(std::optional<AudioBankDefinition> bank) { audio_ = std::move(bank); }
     void rotationAxis(Vec3 axis) {
         cancelDrag();
@@ -95,7 +96,7 @@ class Viewport final : public QWidget {
     QSet<int> keys_;
     QElapsedTimer elapsed_;
     bool navigating_ = false, panning_ = false, orbiting_ = false, unavailable_ = false;
-    bool grid_ = false, snap_ = false, collisions_ = false;
+    bool grid_ = false, snap_ = false, collisions_ = false, sceneData_ = false;
     bool editable_ = true;
     size_t frames_ = 0;
 };

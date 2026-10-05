@@ -65,3 +65,4 @@ __pycache__/
 
 # Project locks are local editor state.
 *.editor.lock
+.paper-editor/

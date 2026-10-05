@@ -86,10 +86,16 @@ struct Loader {
     Value read(const std::filesystem::path& path, std::string_view field) {
         require(path.extension() == std::string(".dc") + std::string(field),
                 "Expected native DCMO document extension: " + path.string());
-        auto file = package->store->file(path);
-        sources.push_back(file);
         try {
             const auto override = documents->find(path);
+            // Existing overridden files remain dependencies for change detection. A newly
+            // authored document can be compiled before its first Save All creates the file.
+            std::shared_ptr<const FileResource> file;
+            if (override == documents->end() ||
+                std::filesystem::exists(package->store->resolve(path))) {
+                file = package->store->file(path);
+                sources.push_back(file);
+            }
             const auto document =
                 override != documents->end()
                     ? override->second

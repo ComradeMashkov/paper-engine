@@ -1,4 +1,4 @@
-# Qt scene editor — 2026-10-01
+# Qt scene editor — 2026-10-05
 
 The editor now supports a complete existing-scene editing cycle. macOS Qt 6.9.0
 integration tests have executed native rendering, dock visibility, window resize,
@@ -8,7 +8,7 @@ Inspector editing passed on DCMO 3, including an ASan/UBSan run. Resource browse
 filters and isolated Play/Stop/close also passed with a test-only child process.
 This is an early authoring tool,
 not a completed Unity/Unreal equivalent. Human visual/usability acceptance, other
-platforms and recovery remain outstanding.
+platforms, import and advanced editing remain outstanding.
 
 ## Workspace and controls
 
@@ -53,6 +53,28 @@ platforms and recovery remain outstanding.
   lost focus and hiding. Delete/Backspace and Cmd/Ctrl+D are scoped to hierarchy
   and viewport so typing in an inspector field does not delete/duplicate objects.
 
+## Scene and host content authoring
+
+File → New Scene creates a scene, room and spawn as an in-memory draft. Save All
+journals the new file and world manifest together; an existing filename is never
+overwritten. Undo after Save removes the manifest reference and retains the asset.
+Set Project Entry Spawn chooses from all declared spawns.
+
+Edit Scene Data provides typed forms and add/duplicate/delete for rooms, lights,
+spawns and transitions/trigger volumes, plus a source tab. Apply validates the complete
+project before one Undo command is accepted. Source-only comments are saved too.
+Positions/ranges are metres and source yaw is radians. Scene Data overlays show
+room/transition bounds, spawn directions and light positions in the current scene.
+
+Inspector → Edit Object Properties edits room/acoustic/reach and host-registered
+fields with inherited values and choices. The host supplies game kinds, door/item
+properties, validators and text asset types through Qt-free `Options`. Registered
+sources open from the Project browser or File menu with Find, Validate, Undo/Redo,
+Save and guarded UTF-8 editing. The engine owns no game VM. A host can validate scene
+references on each candidate, and validate the complete set of source drafts before
+Save All/Play. Editing source code is the authoring path for host triggers/sequences;
+there is no visual scripting graph.
+
 ## Architecture and boundaries
 
 Qt 6 Widgets owns windows, menus, docks, focus and the event loop. `Viewport` embeds
@@ -94,7 +116,7 @@ available. Each has structured forms, a Source tab, shared Undo/Redo and guarded
 atomic Save. Pending fields are applied and validated before Save or Play. Invalid
 drafts remain editable; Undo first discards a pending form draft. Structured changes
 canonicalize the asset; untouched/source-only edits preserve their text. Close offers
-Save/Discard/Cancel. Scene Save All does not save these separate asset windows.
+Save/Discard/Cancel. Save All includes visible UI/audio/host-source asset windows in the same journal as scenes.
 
 UI Design provides the six shared components, hierarchy, add/duplicate/delete,
 parent/reorder, layout constraints, theme and viewport. Design clicks select nodes;
@@ -110,7 +132,7 @@ See [UI](UI.md), [physics](PHYSICS.md) and [audio](AUDIO.md).
   at selector lists spawns in the selected scene. No spawn or no configured runtime
   disables Play with a status explanation. The Console shows preparation, process
   output, launch failures and exit status. Its history is bounded to 1,000 blocks.
-- All unsaved scene documents and the open UI/audio asset drafts are serialized into
+- All unsaved scene documents and the open UI/audio/host-source asset drafts are serialized into
   a temporary copy of the complete asset tree. The copy's world entrySpawn is changed
   to the selected spawn; original
   files are neither saved nor rewritten. Scene edits made during Play apply on the
@@ -158,8 +180,25 @@ See [UI](UI.md), [physics](PHYSICS.md) and [audio](AUDIO.md).
   checked against their opening/saved snapshots. External changes block writing.
 - QLockFile prevents cooperating editor instances. QSaveFile atomically replaces
   one file with direct-write fallback disabled. Failure retains dirty state.
-  Save All is sequential, not a multi-file transaction. There is no autosave or
-  crash recovery yet. A non-cooperating writer can race the final compare/rename.
+  Save All validates the complete package and visible UI/audio/host-source drafts, records all
+  replacements and dependency baselines in a bounded local journal, then replaces
+  files individually. An interrupted intent is completed on the next project open
+  under its lock, or with File → Finish Interrupted Save. Any externally changed
+  target/dependency blocks the entire recovery before it writes another file.
+  A non-cooperating writer can still race the final compare/rename; this is redo
+  recovery, not isolation or a filesystem-wide power-loss transaction.
+- Automatic recovery snapshots run every 30 seconds and store scene drafts and
+  visible UI/audio/host-source text and pending scene/component property fields, including invalid drafts,
+  separately under `.paper-editor/<project-path-hash>/`. Source files are untouched.
+  File → Create Recovery Snapshot forces a capture. Reopening offers Restore,
+  Discard or Cancel; Cancel retains recovery and pauses new snapshots until resolved.
+  Restore validates scenes and the world manifest as a complete candidate and adds
+  one project Undo command. Invalid scene drafts open for staged repair before
+  complete validation; failed candidates retain recovery. Invalid UI/audio/source drafts reopen for repair; they cannot be saved or played.
+  External conflicts retain snapshots and report the affected file. An explicit
+  File → Discard Recovery Snapshot is available for conflict resolution.
+  Normal confirmed close discards the current recovery snapshot, except deferred
+  recovery. Local snapshots are bounded and excluded from Git and Play content.
 - Source checking does not infer arbitrary game-script dependencies. Review host
   references when deleting authored nodes used by gameplay.
 
@@ -169,7 +208,11 @@ Executed, with owner authorization and only on disposable copies:
 
 - `paper_authoring_tests`: no-op byte identity, Unicode/comments, transform and
   metadata edits, create/delete/reorder and undo across Save, nested source tables,
-  empty-scene transitions, invalid IDs, and unsaved transforms through the loader.
+  empty-scene transitions, invalid IDs, all scene sections, comments/source-only
+  changes and virtual unsaved scenes through the loader.
+- `paper_editor_scene_tests`: new scene/manifest save, cold recovery and repair of
+  invalid pending scene fields, full-scene Undo across Save, isolated Save Scene
+  reference guards and journaled host-source validation on temporary projects.
 - `paper_editor_workspace_tests <copied-project.paperproject>`: creates another
   temporary copy itself, isolates settings, checks native GPU frames and nonoverlap
   of visible docks, then edits/saves/reopens. Passed with Boxes v2/v3 and a host
@@ -184,8 +227,8 @@ Executed, with owner authorization and only on disposable copies:
   structured controls, actual preview layout/input, pending drafts, Undo across Save,
   atomic save/external-change guards, WAV/binding validation, dummy-device audition,
   shipped examples and transactional v3 project-copy migration.
-- All 16 CTest cases passed in Release and ASan/UBSan, including Metal and the
-  component editors. Release standalone editor and host game/editor builds passed.
+- All 18 CTest cases passed in Release and ASan/UBSan, including Metal, complete scene/source authoring, cold recovery, invalid drafts,
+  cross-scene save guards and the component editors. Release standalone editor and host game/editor builds passed.
   UI/audio forms were visually inspected from test-window captures.
 
 These programmatic checks are not a claim of human visual acceptance or
@@ -194,9 +237,8 @@ Still required: direct manipulation review, Retina/multiple displays, dock dragg
 minimize/restore, keyboard-only/IME, external-edit/write-failure injection, performance
 and user sessions; then Windows. The game was not run.
 
-Next work: autosave/recovery and Save All journal, import/reimport and thumbnails,
-component/light/room/spawn authoring, script-aware reference tools, multi-selection,
-local axes, copy/paste, scene creation, Play acceptance/Pause, incremental validation and packaging.
+Next work: import/reimport and thumbnails, visual script/reference graphs, multi-selection,
+local axes, copy/paste, Play acceptance/Pause, incremental validation and packaging.
 Review Qt deployment/licensing before distributing a package.
 
 ## References

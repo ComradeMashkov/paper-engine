@@ -83,6 +83,9 @@ int main(int argc, char** argv) {
         waitFor([&] { return viewport->renderedFrames() > 0 || problems->count() > 0; });
         if (problems->count())
             throw std::runtime_error(problems->item(0)->text().toStdString());
+        const auto framesBeforeOverlay = viewport->renderedFrames();
+        child<QAction>(*window, "showSceneData")->setChecked(true);
+        waitFor([&] { return viewport->renderedFrames() > framesBeforeOverlay; });
         for (const auto name : {"hierarchy", "inspector", "assets", "problems"}) {
             const auto* panel = child<QDockWidget>(*window, name);
             check(panel->isVisible() && panel->width() > 0 && panel->height() > 0,

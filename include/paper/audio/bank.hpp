@@ -10,6 +10,7 @@ struct AudioSourceDefinition {
     std::string id, sound, node;
     Vec3 offset;
     float gain = 1, rangeMeters = audioParameters::defaultRangeMeters;
+    bool spatial = true;
 };
 struct AcousticZone {
     std::string id, ambience;

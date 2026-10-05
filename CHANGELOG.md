@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.14.0-alpha.1+build.18] - 2026-10-05
+
+- Provide `Paper::AudioCore` for bank definitions, bindings, acoustic zones and PCM mixing without SDL/Qt. Keep the existing `Paper::Audio` facade and functionality for device/WAV consumers. Headless game sessions can validate editable audio without acquiring a platform dependency.
+- Verification: all engine targets built, and all 18 standalone CTest cases passed, in Release and ASan/UBSan including Metal, storage/recovery, authoring, audio and UI. Version, numeric ownership and whitespace checks passed.
+- Compatibility: additive CMake target; the existing facade, audio bank version 2 and content formats are unchanged.
+
+## [0.13.1-alpha.1+build.17] - 2026-10-05
+
+- Keep a slider's grab offset when its thumb is pressed off centre; apply the final release coordinate before ending capture. Preserve track-click snapping, quantization and cancellation.
+- Verification: all engine targets built in Release and ASan/UBSan. Shared UI tests passed in both configurations, including off-centre grabs, final release and cancellation.
+
+## [0.13.0-alpha.1+build.16] - 2026-10-05
+
+- Author spatial and nonspatial source modes in audio bank version 2; continue reading version 1 with its original spatial defaults. Expose the mode through the existing structured source editor.
+- Replace a decoded bank through the live SDL stream lock without reopening the device. Preserve mute and bus levels; reject malformed replacements before publication. Expose bank replacement and complete binding frames through the runtime facade.
+- Verification: audio-bank and editor-component tests passed in Release and ASan/UBSan, including version compatibility, shared placements and dummy-device replacement failure. All engine targets built in both configurations; no game was launched.
+- Compatibility: writers emit bank version 2, which older engines cannot read. Version 1 input remains supported. Already queued PCM can finish within device latency after a successful replacement.
+
+## [0.12.0-alpha.1+build.15] - 2026-10-05
+
+- Add filtered feet-origin capsule placement queries for saved-player validation and moving collider clearance. Permit support contact within an explicit metre tolerance, reject malformed geometry and stale collider IDs, and retain owner-thread enforcement.
+- Verification: physics tests passed in Release and ASan/UBSan, including low ceilings, support contact, reciprocal layers and moved/removed colliders. Version, numeric ownership and whitespace checks passed.
+- Compatibility: additive Qt/SDL-independent physics API; content and save formats are unchanged.
+
+## [0.11.1-alpha.1+build.14] - 2026-10-05
+
+- Initialize missing interaction bounds from the selected resource when a host component is attached; preserve authored bounds.
+- Keep large host object-property forms inside a resizable scroll area so every field and Apply remain reachable. This was found while connecting DCMO door/item authoring.
+- Verification: complete scene/editor integration tests passed in Release and ASan/UBSan on temporary projects, including scrolling and applying a host component. Metadata, numeric ownership and whitespace checks passed.
+
+## [0.11.0-alpha.1+build.13] - 2026-10-05
+
+- Create scenes as unsaved drafts and journal their first save with the world manifest. Author rooms, lights, spawns, transitions/trigger volumes and project entry points with complete-project validation and Undo across Save.
+- Preserve untouched TOML/comments in every scene section; retain source-only edits. Display scene data overlays and edit inherited object properties with host-registered game fields and choices.
+- Add guarded UTF-8 host-source editors, Find, validation and Undo. Save from these editors uses the project journal and host cross-file validation; include source drafts in recovery and isolated Play. The engine contains no game VM.
+- Recover new scenes and world-manifest drafts; reopen invalid scene drafts for staged repair. Compile and migrate virtual new scenes before any authored file exists. Validate Save Scene against the exact disk candidate rather than unrelated unsaved documents.
+- Verification on macOS: 18 CTest cases passed in Release and ASan/UBSan, including Metal, cold recovery, invalid pending forms, cross-scene save guards and host-source validation. Native Boxes workspace and isolated Play lifecycle checks passed on temporary copies. Version/numeric ownership and whitespace checks passed.
+- Compatibility: DCMO 2/3 remain supported; additions to the host editor API are source-compatible. Host triggers/sequences are authored as source; visual scripting graphs and real-game Play acceptance remain outside these engine checks.
+
+## [0.10.0-alpha.1+build.12] - 2026-10-05
+
+- Journal Save All across scene documents and open UI/audio banks before atomically replacing files. Validate every source before writing; retain interrupted intent for restart or explicit retry.
+- Capture separate automatic recovery snapshots every 30 seconds, including unapplied and invalid UI/audio property drafts. Offer Restore/Discard/Cancel; restore scenes as one Undo command and leave authored files untouched.
+- Bound journal decoding, reject duplicate targets, escaping/hidden paths and symlinks, and retain externally conflicting recovery data. Keep local recovery state out of Git and Play snapshots.
+- Verification on macOS: storage, component and authoring CTest cases passed in Release and ASan/UBSan, including an actual writer-process crash. Native copied-Boxes workspace checks passed through Save/reopen and isolated Play/Stop. Version, numeric ownership and whitespace checks passed.
+- Limits: individual file replacements become visible sequentially. The journal restores consistency after process failure; this does not provide isolation from non-cooperating writers or a filesystem-wide power-loss transaction.
+
 ## [0.9.0-alpha.1+build.11] - 2026-10-01
 
 - Expose collider bounds editing, initial fitting, category/mask authoring and

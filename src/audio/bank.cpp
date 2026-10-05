@@ -5,6 +5,7 @@ namespace paper {
 namespace {
 constexpr size_t maximumSources = 4096, maximumZones = 256;
 constexpr unsigned maximumVariants = 64;
+constexpr int legacyBankVersion = 1, spatialBankVersion = 2;
 constexpr float maximumRangeMeters = 10000, zoneTransitionSeconds = .2f, maximumFeedback = .95f,
                 maximumDamping = .99f;
 using Value = ContentValue;
@@ -106,9 +107,10 @@ void validateAudioBank(const AudioBankDefinition& bank) {
 AudioBankDefinition parseAudioBank(std::string_view text, std::string_view name) {
     const auto root = content::parse(text, name);
     keys(root, {"format", "version", "bank"});
-    require(root.at("format") == "paper.audio" && root.at("version").is_number_integer() &&
-                root.at("version") == 1,
-            "Unsupported audio bank format/version");
+    require(
+        root.at("format") == "paper.audio" && root.at("version").is_number_integer() &&
+            (root.at("version") == legacyBankVersion || root.at("version") == spatialBankVersion),
+        "Unsupported audio bank format/version");
     const auto& data = root.at("bank");
     keys(data, {"sounds", "sources", "zones"});
     AudioBankDefinition bank;
@@ -135,11 +137,14 @@ AudioBankDefinition parseAudioBank(std::string_view text, std::string_view name)
         bank.sounds.push_back(s);
     }
     for (const auto& v : data.value("sources", Value::array())) {
-        keys(v, {"id", "sound", "node", "offset", "gain", "range"});
+        keys(v, {"id", "sound", "node", "offset", "gain", "range", "spatial"});
+        require(root.at("version") == spatialBankVersion || !v.contains("spatial"),
+                "Explicit spatial source mode requires audio bank version 2");
         bank.sources.push_back(
             {v.at("id").get<std::string>(), v.at("sound").get<std::string>(),
              v.value("node", std::string{}), vector(v.value("offset", Value::array({0, 0, 0}))),
-             v.value("gain", 1.f), v.value("range", audioParameters::defaultRangeMeters)});
+             v.value("gain", 1.f), v.value("range", audioParameters::defaultRangeMeters),
+             v.value("spatial", true)});
     }
     for (const auto& v : data.value("zones", Value::array())) {
         keys(v, {"id", "ambience", "center", "half", "rotation", "priority", "fade", "wet",
@@ -189,7 +194,8 @@ std::string writeAudioBank(const AudioBankDefinition& bank) {
                                                    {"node", s.node},
                                                    {"offset", vector(s.offset)},
                                                    {"gain", s.gain},
-                                                   {"range", s.rangeMeters}});
+                                                   {"range", s.rangeMeters},
+                                                   {"spatial", s.spatial}});
     for (const auto& z : bank.zones) {
         const auto q = z.bounds.orientation();
         data["zones"].elements().push_back(Value{{"id", z.id},
@@ -203,7 +209,8 @@ std::string writeAudioBank(const AudioBankDefinition& bank) {
                                                  {"feedback", z.feedback},
                                                  {"damping", z.damping}});
     }
-    return content::encode(Value{{"format", "paper.audio"}, {"version", 1}, {"bank", data}});
+    return content::encode(
+        Value{{"format", "paper.audio"}, {"version", spatialBankVersion}, {"bank", data}});
 }
 AudioBindings::AudioBindings(AudioBankDefinition bank) : bank_(std::move(bank)) {
     validateAudioBank(bank_);
@@ -250,7 +257,7 @@ std::optional<SoundPlacement> AudioBindings::placement(const Binding& binding,
     }
     if (!transform.valid())
         throw std::invalid_argument("Invalid bound audio transform");
-    return SoundPlacement{transform.point(s.offset), s.gain, s.rangeMeters, true};
+    return SoundPlacement{transform.point(s.offset), s.gain, s.rangeMeters, s.spatial};
 }
 std::optional<AudioLoopCommand> AudioBindings::event(std::string_view instance,
                                                      const Resolve& resolve) const {

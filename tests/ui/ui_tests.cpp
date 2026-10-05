@@ -73,6 +73,29 @@ int main() {
           "slider captures outside viewport and clamps value");
     context.layout({0, 0, 100, 128});
     check(context.capture().empty(), "resize cancels stale drag");
+    {
+        Context drag([](auto, float) { return 0.f; });
+        Node control;
+        control.id = "drag";
+        control.kind = Kind::Slider;
+        control.value = .5;
+        control.step = .01;
+        drag.setTree(control);
+        drag.layout({0, 0, 200, 40});
+        const std::array press{Input{InputType::Down, {105, 20}}};
+        check(drag.input(press).empty() && drag.node("drag").value == .5,
+              "grabbing a thumb off centre does not jump its value");
+        const std::array release{Input{InputType::Up, {181, 20}}};
+        const auto actions = drag.input(release);
+        check(actions.size() == 1 && std::abs(actions[0].value - .93) < .001 &&
+                  drag.capture().empty(),
+              "release applies the final pointer with the original grab offset");
+        (void)drag.input(press);
+        const std::array cancel{Input{InputType::Cancel, {}}};
+        (void)drag.input(cancel);
+        const std::array outside{Input{InputType::Up, {500, 20}}};
+        check(drag.input(outside).empty(), "cancel discards an unfinished slider drag");
+    }
     root.layout.direction = Direction::Row;
     root.children = {button, toggle};
     for (auto& n : root.children) {

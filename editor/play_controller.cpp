@@ -27,6 +27,10 @@ void write(const fs::path& path, std::string_view bytes) {
 }
 void verify(const PlayInput& input) {
     ResourceStore files(input.root);
+    for (const auto& relative : input.absent)
+        if (fs::exists(files.resolve(relative)))
+            throw std::runtime_error(
+                "A new authored scene appeared outside the editor; reopen before Play");
     for (const auto& [relative, expected] : input.expected) {
         QFile file(pathText(files.resolve(relative)));
         if (!file.open(QIODevice::ReadOnly) ||
@@ -41,7 +45,13 @@ std::map<fs::path, Stamp> inventory(const fs::path& root,
                                     const std::shared_ptr<std::atomic_bool>& canceled) {
     std::map<fs::path, Stamp> result;
     uintmax_t bytes = 0;
-    for (const auto& entry : fs::recursive_directory_iterator(root)) {
+    for (auto iterator = fs::recursive_directory_iterator(root);
+         iterator != fs::recursive_directory_iterator(); ++iterator) {
+        const auto& entry = *iterator;
+        if (entry.path().filename() == ".paper-editor") {
+            iterator.disable_recursion_pending();
+            continue;
+        }
         if (*canceled)
             throw std::runtime_error("Play canceled.");
         if (entry.is_symlink())

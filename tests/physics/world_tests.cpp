@@ -25,6 +25,29 @@ int main() {
     constexpr float dt = 1.f / 60;
     {
         PhysicsWorld w;
+        const auto support = floor(w);
+        const auto ceiling = w.addBox({{0, 1.5f, 0}, {1, .1f, 1}}, {}, {2, 4});
+        check(!w.overlapsCapsule({}, .22f, 1.2f, {4, 3}),
+              "crouched placement permits touching support and clears a low ceiling");
+        check(w.overlapsCapsule({}, .22f, 1.8f, {4, 3}),
+              "standing placement detects head penetration");
+        check(!w.overlapsCapsule({}, .22f, 1.8f, {4, 1}),
+              "placement respects symmetric category/mask filtering");
+        check(!w.overlapsCapsule({}, .22f, 1.8f, {4, 3}, support) &&
+                  w.overlapsCapsule({}, .22f, 1.8f, {4, 3}, ceiling),
+              "placement can isolate a moving collider without including other contacts");
+        w.move(ceiling, {5, 0, 0});
+        check(!w.overlapsCapsule({}, .22f, 1.8f, {4, 3}, ceiling),
+              "placement uses current collider pose");
+        w.remove(ceiling);
+        check(rejects([&] { (void)w.overlapsCapsule({}, .22f, 1.8f, {4, 3}, ceiling); }),
+              "placement rejects stale collider identifiers");
+        check(rejects([&] { (void)w.overlapsCapsule({}, .3f, .4f); }) &&
+                  rejects([&] { (void)w.overlapsCapsule({}, .3f, 1.8f, {}, {}, -.1f); }),
+              "placement rejects invalid dimensions and tolerance before dependency calls");
+    }
+    {
+        PhysicsWorld w;
         floor(w);
         CharacterController c(w, {0, 0, 0});
         for (int k = 0; k < 60; ++k)

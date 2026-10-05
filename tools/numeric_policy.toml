@@ -21,7 +21,7 @@ literal_sha256 = "6dff0ed3f458f86ac22f55a788a2f08824d47ff3ca4b1c7d7ea0ffa926c4b0
 
 ["tests/authoring/document_tests.cpp"]
 reason = "Independent scene source fixtures: XYZ coordinates, scale and angle overrides, invalid vector lengths and Unicode source columns verify lossless editing and undo across save without using implementation defaults."
-literal_sha256 = "bf442854e31d760b0fc7669a4efef2a02607a572c77f3ed5549fddb3badeddd6"
+literal_sha256 = "698594bf6c9a003135cd6e31dea56da16d8aa618bdabe5da32aa3673ce121e87"
 
 ["tests/editor/workspace_tests.cpp"]
 reason = "Independent native workspace geometry, quaternion/axis-scale and collider-bitset expectations, object counts, resource filters, unsaved Play snapshot/start point, Undo and asynchronous close on disposable project copies."
@@ -40,12 +40,12 @@ reason = "Independent analytic rotation, anisotropic normal, sheared hierarchy, 
 literal_sha256 = "f54d42bcc34225fbad12b32eb810e40865c61d8b546fd9708d791400b42dcaf3"
 
 ["tests/physics/world_tests.cpp"]
-reason = "Independent metre/time/layer fixtures verify steps, steep slopes, clearance, continuous sweeps, scene rollback, capacity, overflowing geometry and v3 template inheritance without depending on implementation defaults."
-literal_sha256 = "b50e16dac470dbaa9b5f757a0df0b1e1e39196f7f4e32102785b537c47842d76"
+reason = "Independent metre/time/layer fixtures verify steps, steep slopes, clearance, continuous sweeps, scene rollback, capacity, overflowing geometry, v3 template inheritance and filtered capsule placements without depending on implementation defaults."
+literal_sha256 = "2a12545bd660be15121f97d79bba0a7d60fd0ff745e31813dc53b2f96abfe39a"
 
 ["tests/audio/bank_tests.cpp"]
 reason = "Independent source/zone positions, capacity counts, hand-authored RIFF PCM bytes, resampling range, malformed replacements and echo-decay thresholds verify the bank contract independently of defaults."
-literal_sha256 = "3c4cafb4e782a402ae66fa787a6783edeee400126a52af50579a9e264d0c4683"
+literal_sha256 = "1a6073c9325c827f5d24ee65bd438ee975abec27b1b4d8de30bb37566728993b"
 
 ["tests/editor/audio_bank_tests.cpp"]
 reason = "Independent editable source bytes and temporary-file scenarios exercise no-op/comment preservation, invalid edits and external-change protection without launching a game."
@@ -53,7 +53,7 @@ literal_sha256 = "7df9c0c4617fa42da373dcd6bfbd364c3b083887a77c173870f745a2790579
 
 ["tests/ui/ui_tests.cpp"]
 reason = "Independent logical-pixel, text-width, input-coordinate and slider/list fixtures verify flex bounds, clipping, wrapped height, capture/focus, scroll visibility and transactional layout."
-literal_sha256 = "93b4044651d5b0b3fd8d43c6e145439ec44bf262c7ed0aa7e0ced87ae1914f27"
+literal_sha256 = "9f197261ce8996f00fc94b66d2a4b22828dd98175780a80b9c5aa20b54eeae50"
 
 ["tests/ui/input_tests.cpp"]
 reason = "Independent ordered SDL edge/modifier/wheel samples verify host-to-UI event translation, repeat and focus/debug cancellation without constructing an application."
@@ -65,4 +65,12 @@ literal_sha256 = "6094a5b4fafca4c2894d969daf9b79a43eed61506fb537bdb1b2505b62d1cb
 
 ["tests/editor/component_tests.cpp"]
 reason = "Independent Qt editor fixtures cover every UI component, exact untouched values, interactive preview isolation, pending draft validation, structured audio and WAV bytes, dummy-device audition, source guards and transactional project-copy migration."
-literal_sha256 = "17131805b0265565ad23af8394d3a534b27b80f4aa06ccbd86717590bfc09628"
+literal_sha256 = "315dbc484e59cc93289e4336164453a27946f0fa724da33fe6c21d290ce2ccb1"
+
+["tests/editor/storage_tests.cpp"]
+reason = "Independent interrupted-write, external-conflict, malformed journal and actual child-process crash fixtures verify redo recovery and source isolation; exit status and timeout belong to the test harness."
+literal_sha256 = "ecd7932d6e2fa1924546a93bae9aeba5cbbad590ee24dbab50c98ad5c1da05ea"
+
+["tests/editor/scene_tests.cpp"]
+reason = "Independent editor fixtures verify virtual new scenes, cold recovery, journaled manifests, typed lights, invalid pending room drafts, source-only comments, Undo across Save and external text conflicts on temporary projects; modal timeouts belong to the harness."
+literal_sha256 = "ad40a41d9fb1f87ef56468d8461f9177afd484cae5e316a45a8a8ed2b7073c79"

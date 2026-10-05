@@ -39,6 +39,8 @@ int main(int argc, char** argv) {
         input.manifest = "world.dcworld";
         input.expected["scene.dcscene"] = "saved scene";
         input.overrides["scene.dcscene"] = "unsaved scene";
+        input.absent.insert("new/annex.dcscene");
+        input.overrides["new/annex.dcscene"] = "new unsaved scene";
         input.overrides["world.dcworld"] = "[world]\nentrySpawn = 'selected'\n";
         paper::editor::PlayController play;
         QString logs;
@@ -60,6 +62,9 @@ int main(int argc, char** argv) {
                   "Repeated Play must not create a second process");
             check(read(snapshot / "assets" / "scene.dcscene") == "unsaved scene",
                   "Snapshot must contain unsaved authoring edits");
+            check(read(snapshot / "assets" / "new/annex.dcscene") == "new unsaved scene" &&
+                      !fs::exists(input.root / "new/annex.dcscene"),
+                  "Play includes never-saved scenes without creating original files");
             check(read(snapshot / "assets" / "nested folder" / "texture.bin") == "unchanged media",
                   "Snapshot must contain external media including paths with spaces");
             check(read(root / "assets" / "scene.dcscene") == "saved scene" &&

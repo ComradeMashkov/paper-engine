@@ -1,4 +1,5 @@
 #include "paper/authoring/document.hpp"
+#include "paper/authoring/source.hpp"
 #include "paper/content/document.hpp"
 #include "paper/core/utf8.hpp"
 #include "paper/scenes/scene.hpp"
@@ -193,9 +194,34 @@ void SceneDocument::replaceNodes(ContentValue nodes) {
     validateNodes(nodes);
     data_["scene"]["nodes"] = std::move(nodes);
 }
+void SceneDocument::replaceData(ContentValue data) {
+    require(data.is_object() && data.at("format") == data_.at("format") &&
+                data.at("version") == data_.at("version") && data.at("scene").is_object(),
+            "Scene replacement cannot change its format/version");
+    const auto& scene = data.at("scene");
+    require(scene.at("id").is_string() && !scene.at("id").get<std::string>().empty(),
+            "Expected scene ID");
+    validateNodes(scene.at("nodes"));
+    for (const auto key : {"rooms", "lights", "spawns", "zones"})
+        if (scene.contains(key))
+            validateNodes(scene.at(key));
+    data_ = std::move(data);
+}
 std::string SceneDocument::serialized() const {
     if (!dirty())
         return source_;
+    if (draftSource_) {
+        SceneDocument candidate(path_, *draftSource_);
+        candidate.replaceData(data_);
+        return candidate.serialized();
+    }
+    auto nodesOnly = *this;
+    nodesOnly.data_["scene"] = saved_.at("scene");
+    nodesOnly.data_["scene"]["nodes"] = nodes();
+    if (nodesOnly.data_ != data_) {
+        const auto source = nodesOnly.serialized();
+        return patchSource(source, nodesOnly.data_, data_, path_.string());
+    }
     const auto parsed = toml::parse(source_, path_.string());
     const auto* sourceNodes = parsed["scene"]["nodes"].as_array();
     require(sourceNodes, "Missing source nodes");
@@ -266,8 +292,12 @@ std::string SceneDocument::serialized() const {
         const auto* table = sourceNodes->get(i)->as_table();
         require(table, "Expected source node table");
         std::string added;
-        for (const auto name : {"position", "yaw", "rotation", "basis", "scale", "label",
-                                "resource", "parent", "shadow", "collision", "bounds", "remove"}) {
+        std::set<std::string> names;
+        for (const auto& [name, value] : before.items())
+            names.insert(name);
+        for (const auto& [name, value] : after.items())
+            names.insert(name);
+        for (const auto& name : names) {
             const auto oldValue = before.contains(name) ? before.at(name) : ContentValue{};
             const auto newValue = after.contains(name) ? after.at(name) : ContentValue{};
             if (oldValue == newValue)
@@ -346,5 +376,19 @@ void SceneDocument::acceptSaved(std::string source) {
     require(content::parse(source, path_.string()) == data_, "Saved scene differs from document");
     source_ = std::move(source);
     saved_ = data_;
+    draftSource_.reset();
+}
+void SceneDocument::replaceSource(std::string source) {
+    SceneDocument candidate(path_, source);
+    require(candidate.data().at("version") == data_.at("version"),
+            "Source edit changed scene version");
+    replaceData(candidate.data());
+    draftSource_ = std::move(source);
+}
+void SceneDocument::rebaseSaved(std::string source) {
+    SceneDocument saved(path_, source);
+    require(saved.data().at("version") == data_.at("version"), "Recovery changed scene version");
+    source_ = std::move(source);
+    saved_ = saved.data();
 }
 } // namespace paper::authoring
