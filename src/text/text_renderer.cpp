@@ -17,6 +17,27 @@ using namespace textParameters;
 namespace {
 constexpr std::pair<int, int> ranges[] = {{32, 95},     {0xa0, 96},  {0x400, 96},
                                           {0x2013, 20}, {0x2116, 1}, {0x2190, 4}};
+constexpr int arrowFirst = 0x2190,
+              arrowLast = 0x2193; // numbers: Unicode left/up/right/down arrows.
+// Typeface-independent fallback inside one em; arrow proportions are artwork.
+constexpr float arrowNear = .1f, arrowFar = .9f, arrowMiddle = .5f, arrowHead = .25f;
+void arrow(SDL_Renderer& renderer, int cp, float x, float y, float em, Color color) {
+    const bool vertical = cp == arrowFirst + 1 || cp == arrowLast;
+    const bool reversed = cp == arrowFirst || cp == arrowFirst + 1;
+    const float tip = reversed ? arrowNear : arrowFar, tail = reversed ? arrowFar : arrowNear;
+    const float head = tip + (reversed ? arrowHead : -arrowHead);
+    const auto line = [&](float along1, float across1, float along2, float across2) {
+        return SDL_RenderLine(&renderer, x + em * (vertical ? across1 : along1),
+                              y + em * (vertical ? along1 : across1),
+                              x + em * (vertical ? across2 : along2),
+                              y + em * (vertical ? along2 : across2));
+    };
+    sdl::check(SDL_SetRenderDrawColor(&renderer, color.r, color.g, color.b, color.a) &&
+                   line(tail, arrowMiddle, tip, arrowMiddle) &&
+                   line(head, arrowMiddle - arrowHead, tip, arrowMiddle) &&
+                   line(head, arrowMiddle + arrowHead, tip, arrowMiddle),
+               "Draw fallback arrow");
+}
 struct FontPack {
     stbtt_pack_context context{};
     FontPack(std::vector<unsigned char>& bitmap, int extent) {
@@ -39,11 +60,16 @@ struct TextRenderer::Face {
         stbtt_GetFontVMetrics(&info, &ascent, &descent, nullptr);
     }
     int codepoint(char32_t cp) const {
+        if (cp >= arrowFirst && cp <= arrowLast)
+            return static_cast<int>(cp);
         for (const auto& [first, count] : ranges)
             if (cp >= static_cast<char32_t>(first) && cp < static_cast<char32_t>(first + count) &&
                 stbtt_FindGlyphIndex(&info, static_cast<int>(cp)))
                 return static_cast<int>(cp);
         return '?';
+    }
+    bool fallbackArrow(int cp) const {
+        return cp >= arrowFirst && cp <= arrowLast && !stbtt_FindGlyphIndex(&info, cp);
     }
 };
 struct TextRenderer::Font {
@@ -140,6 +166,13 @@ void TextRenderer::text(std::string_view value, float x, float y, int size, Colo
             continue;
         }
         const int current = face.codepoint(cp);
+        if (face.fallbackArrow(current)) {
+            arrow(renderer_, current, x, baseline - face.ascent * em, static_cast<float>(size),
+                  color);
+            x += size;
+            previous = 0;
+            continue;
+        }
         if (previous)
             x += stbtt_GetCodepointKernAdvance(&face.info, previous, current) * em;
         const auto& g = f.glyphs.at(current);
@@ -169,6 +202,11 @@ float TextRenderer::measure(std::string_view value, int size, FontWeight weight)
             continue;
         }
         const int current = face.codepoint(cp);
+        if (face.fallbackArrow(current)) {
+            x += size;
+            previous = 0;
+            continue;
+        }
         int advance = 0;
         stbtt_GetCodepointHMetrics(&face.info, current, &advance, nullptr);
         x += advance * em;

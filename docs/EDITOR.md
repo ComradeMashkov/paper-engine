@@ -118,7 +118,7 @@ drafts remain editable; Undo first discards a pending form draft. Structured cha
 canonicalize the asset; untouched/source-only edits preserve their text. Close offers
 Save/Discard/Cancel. Save All includes visible UI/audio/host-source asset windows in the same journal as scenes.
 
-UI Design provides the six shared components, hierarchy, add/duplicate/delete,
+UI Design provides the seven shared components (including input-transparent Region), hierarchy, add/duplicate/delete,
 parent/reorder, layout constraints, theme and viewport. Design clicks select nodes;
 Interact exercises the engine's layout/draw/input state without changing authored
 values. Audio editing exposes sounds, source bindings and acoustic zones, node/sound

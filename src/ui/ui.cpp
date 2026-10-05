@@ -1,4 +1,5 @@
 #include "paper/ui/ui.hpp"
+#include "paper/content/document.hpp"
 #include "paper/core/text_layout.hpp"
 #include <iomanip>
 #include <set>
@@ -55,10 +56,15 @@ void Context::index(Node& n, size_t depth, std::map<std::string, Node*, std::les
     for (float v : {n.layout.padding.left, n.layout.padding.top, n.layout.padding.right,
                     n.layout.padding.bottom, n.layout.gap})
         require(std::isfinite(v) && v >= 0, "Invalid UI spacing");
-    require(n.kind >= Kind::Panel && n.kind <= Kind::List && n.layout.direction >= Direction::Row &&
-                n.layout.direction <= Direction::Column && n.layout.align >= Align::Start &&
-                n.layout.align <= Align::Stretch,
+    require(n.kind >= Kind::Panel && n.kind <= Kind::Region &&
+                n.layout.direction >= Direction::Row && n.layout.direction <= Direction::Column &&
+                n.layout.align >= Align::Start && n.layout.align <= Align::Stretch,
             "Invalid UI enum");
+    require(!n.layout.bounds || rectangle(*n.layout.bounds), "Invalid authored UI bounds");
+    require(n.properties.is_object(), "Expected host UI properties table");
+    // Validate metadata through the same bounded native-value writer as sources.
+    if (!n.properties.empty())
+        (void)content::encode(n.properties);
     require(n.items.size() <= maximumListItems, "UI list exceeds item budget");
     require(n.kind == Kind::Panel || n.children.empty(), "Only panels have authored children");
     if (n.kind == Kind::Slider)
@@ -122,11 +128,13 @@ float Context::measured(std::string_view text) const {
     return width;
 }
 Vec2 Context::preferred(const Node& n, float availableWidth) const {
+    if (n.layout.bounds)
+        return {n.layout.bounds->w, n.layout.bounds->h};
     float w = 0, h = 0;
     if (n.kind == Kind::Panel) {
         size_t visible = 0;
         for (const auto& child : n.children)
-            if (child.visible) {
+            if (child.visible && !child.layout.bounds) {
                 const auto size = preferred(child);
                 if (n.layout.direction == Direction::Row) {
                     w += size.x;
@@ -235,7 +243,7 @@ void Context::arrange(const Node& n, Rect bounds, Rect clip, const std::string& 
     std::vector<float> sizes;
     float used = 0;
     for (auto& child : n.children)
-        if (child.visible) {
+        if (child.visible && !child.layout.bounds) {
             children.push_back(&child);
             const auto size =
                 preferred(child, row ? std::numeric_limits<float>::infinity() : area.w);
@@ -294,9 +302,16 @@ void Context::arrange(const Node& n, Rect bounds, Rect clip, const std::string& 
         arrange(child, childBounds, clip, n.id, enabled_[n.id]);
         at += sizes[k] + l.gap;
     }
+    for (const auto& child : n.children)
+        if (child.visible && child.layout.bounds) {
+            const auto b = *child.layout.bounds;
+            arrange(child, {area.x + b.x, area.y + b.y, b.w, b.h}, clip, n.id, enabled_[n.id]);
+        }
 }
 std::string Context::hit(Vec2 point) const {
     for (auto it = order_.rbegin(); it != order_.rend(); ++it) {
+        if (nodes_.at(*it)->kind == Kind::Region)
+            continue; // Hosted artwork is input-transparent to shared controls.
         const auto& b = boxes_.at(*it);
         if (b.clip.w > 0 && b.clip.h > 0 && b.clip.contains(point.x, point.y) &&
             b.bounds.contains(point.x, point.y))
@@ -523,6 +538,8 @@ std::vector<Draw> Context::draw() const {
     };
     for (const auto& id : order_) {
         const auto& n = *nodes_.at(id);
+        if (n.kind == Kind::Region)
+            continue; // The host paints inside the authored Box.
         const auto& box = boxes_.at(id);
         const auto b = box.bounds;
         const bool enabled = enabled_.at(id);

@@ -71,7 +71,7 @@ version 1. `[ui]` declares `root`, `viewport` (logical width/height), optional
 panel. Exactly one root has an empty/omitted parent. Missing parents, cycles,
 unknown keys, malformed values and unsupported versions fail before publication.
 
-Nodes support `panel`, `label`, `button`, `toggle`, `slider`, `list`; text, tooltip,
+Nodes support `panel`, `label`, `button`, `toggle`, `slider`, `list`, `region`; text, tooltip,
 enabled/visible/checked, value/range/step, items and row/column layout. `width` and
 `height` tables declare minimum/preferred/maximum/grow/shrink; `maximum = "unlimited"`
 is explicit. Padding order is left/top/right/bottom. Theme colors use RGBA bytes.
@@ -104,3 +104,22 @@ no-op saves preserve their text/comments. Save/Ctrl+S validates actual preview
 layout, checks external changes and atomically replaces the file. Close offers
 Save/Discard/Cancel. Play includes the open document's validated draft in its
 isolated asset copy. The preview is authoring data, not host-game execution.
+
+## Host-painted regions and retained scrolling
+
+Optional node `bounds = [x, y, width, height]` places a child relative to the
+parent's padded inner area; it is excluded from sibling flow. Extents must be
+finite and nonnegative. `region` is input-transparent and emits no paint command;
+hosts resolve its laid-out box for 3D previews, art or dynamic content. Design
+preview outlines the region and ID; Inspector edits its bounds. Node `properties`
+is an owning native object preserved by parse/write/Undo/Save/recovery/Play.
+Hosts validate their metadata contract; Paper never interprets game actions or Lua.
+These additive version-1 fields require Paper 0.16.0 when used.
+
+`ScrollArea` stores an owning target ID, viewport, clamped offset and maximum.
+Retain it across repaint; `layout` preserves/clamps offset for the same target,
+resets on target replacement and rejects invalid geometry without mutation.
+Wheel input acts only inside the viewport. PageUp/PageDown/Home/End are available
+when the host selects keyboard focus; `reveal` exposes selected dynamic content.
+`ScopedClip` intersects a host-painted area with the existing Engine clip and
+restores it on normal return or exception. Neither helper stores content views.

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0-alpha.1+build.20] - 2026-10-05
+
+- Add authored, input-transparent Region nodes, parent-relative bounds and owning host properties to native UI documents. Preserve them in the writer, designer, Inspector, Save All and recovery. Existing version-1 documents remain readable; documents using the additive fields require this engine.
+- Add retained device-free ScrollArea, keyboard paging and nested ScopedClip for host-painted content. Cancel stale widget capture when geometry changes while retaining valid capture across repaint.
+- Render unsupported directional arrow glyphs with measured vector fallbacks; keep text values unchanged. Keep font-weight data independent of SDL devices.
+- Verification: all standalone targets built and all 18 CTest cases passed in Release and ASan/UBSan, including Metal/GPU, categorized document round trips, region/capture/scroll regressions and editor storage/recovery. The native Boxes workspace passed in both configurations. The host Release suite passed all 47 cases. No game/Lua dependency is introduced.
+
 ## [0.15.0-alpha.1+build.19] - 2026-10-05
 
 - Add an owning categorized string-table reader shared by runtime hosts and editor labels.

@@ -148,6 +148,19 @@ void UiPreview::paintEvent(QPaintEvent*) {
         }
         painter.restore();
     }
+    if (!interactive_)
+        for (const auto& id : order_) {
+            if (context_->node(id).kind != ui::Kind::Region)
+                continue;
+            const auto box = context_->box(id);
+            painter.save();
+            painter.setClipRect(rectangle(box.clip));
+            painter.setPen(palette().highlight().color());
+            painter.drawRect(rectangle(box.bounds));
+            painter.setFont(previewFont(ui::Theme{}.fontPixels));
+            painter.drawText(rectangle(box.bounds), Qt::AlignTop | Qt::TextWordWrap, text(id));
+            painter.restore();
+        }
     if (!interactive_ && !selection_.empty()) {
         try {
             const auto box = context_->box(selection_);
@@ -212,12 +225,13 @@ void UiPreview::keyPressEvent(QKeyEvent* event) {
         return;
     }
     const std::map<int, ui::Key> keys{
-        {Qt::Key_Tab, ui::Key::Tab},      {Qt::Key_Backtab, ui::Key::Tab},
-        {Qt::Key_Return, ui::Key::Enter}, {Qt::Key_Enter, ui::Key::Enter},
-        {Qt::Key_Space, ui::Key::Space},  {Qt::Key_Left, ui::Key::Left},
-        {Qt::Key_Right, ui::Key::Right},  {Qt::Key_Up, ui::Key::Up},
-        {Qt::Key_Down, ui::Key::Down},    {Qt::Key_Home, ui::Key::Home},
-        {Qt::Key_End, ui::Key::End},      {Qt::Key_Escape, ui::Key::Escape}};
+        {Qt::Key_Tab, ui::Key::Tab},       {Qt::Key_Backtab, ui::Key::Tab},
+        {Qt::Key_Return, ui::Key::Enter},  {Qt::Key_Enter, ui::Key::Enter},
+        {Qt::Key_Space, ui::Key::Space},   {Qt::Key_Left, ui::Key::Left},
+        {Qt::Key_Right, ui::Key::Right},   {Qt::Key_Up, ui::Key::Up},
+        {Qt::Key_Down, ui::Key::Down},     {Qt::Key_Home, ui::Key::Home},
+        {Qt::Key_End, ui::Key::End},       {Qt::Key_Escape, ui::Key::Escape},
+        {Qt::Key_PageUp, ui::Key::PageUp}, {Qt::Key_PageDown, ui::Key::PageDown}};
     if (keys.contains(event->key())) {
         input({ui::InputType::Key,
                {},
@@ -257,7 +271,7 @@ UiEditor::UiEditor(std::filesystem::path file, std::filesystem::path assets, QWi
     auto* controls = new QHBoxLayout;
     palette_ = new QComboBox;
     palette_->setObjectName("uiPalette");
-    palette_->addItems({"panel", "label", "button", "toggle", "slider", "list"});
+    palette_->addItems({"panel", "label", "button", "toggle", "slider", "list", "region"});
     controls->addWidget(palette_);
     const auto button = [&](const char* name, const QString& title,
                             const std::function<void()>& action) {
@@ -444,7 +458,7 @@ void UiEditor::inspect() {
         if (i == data.at("nodes").end())
             return;
         PropertyForm::Choices choices{
-            {"kind", {"panel", "label", "button", "toggle", "slider", "list"}},
+            {"kind", {"panel", "label", "button", "toggle", "slider", "list", "region"}},
             {"direction", {"row", "column"}},
             {"align", {"start", "center", "end", "stretch"}},
             {"parent", {""}}};
