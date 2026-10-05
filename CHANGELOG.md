@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.15.0-alpha.1+build.19] - 2026-10-05
+
+- Add an owning categorized string-table reader shared by runtime hosts and editor labels.
+  Category names never change complete text IDs; duplicate IDs across categories,
+  empty text and nested/non-string entries are rejected. Flat tables remain readable.
+- Keep native writer semantics and editor source/save/recovery paths. No game or Lua
+  dependencies were introduced.
+- Verification: Release host build and the existing document tests compiled; grouped
+  Unicode/writer and rejection regressions added. Full final verification is recorded
+  in the subsequent task entry; no platform or human acceptance is implied here.
+
 ## [0.14.0-alpha.1+build.18] - 2026-10-05
 
 - Provide `Paper::AudioCore` for bank definitions, bindings, acoustic zones and PCM mixing without SDL/Qt. Keep the existing `Paper::Audio` facade and functionality for device/WAV consumers. Headless game sessions can validate editable audio without acquiring a platform dependency.
