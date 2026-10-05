@@ -73,4 +73,4 @@ literal_sha256 = "ecd7932d6e2fa1924546a93bae9aeba5cbbad590ee24dbab50c98ad5c1da05
 
 ["tests/editor/scene_tests.cpp"]
 reason = "Independent editor fixtures verify virtual new scenes, cold recovery, journaled manifests, typed lights, invalid pending room drafts, source-only comments, Undo across Save and external text conflicts on temporary projects; modal timeouts belong to the harness."
-literal_sha256 = "71a24c9e067bd1d84a3e002940d3b98c2217415a3d2f75d4af20453daba81109"
+literal_sha256 = "ad40a41d9fb1f87ef56468d8461f9177afd484cae5e316a45a8a8ed2b7073c79"

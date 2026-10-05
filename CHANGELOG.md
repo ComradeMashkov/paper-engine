@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.1-alpha.1+build.14] - 2026-10-05
+
+- Initialize missing interaction bounds from the selected resource when a host component is attached; preserve authored bounds.
+- Keep large host object-property forms inside a resizable scroll area so every field and Apply remain reachable. This was found while connecting DCMO door/item authoring.
+- Verification: complete scene/editor integration tests passed in Release and ASan/UBSan on temporary projects, including scrolling and applying a host component. Metadata, numeric ownership and whitespace checks passed.
+
 ## [0.11.0-alpha.1+build.13] - 2026-10-05
 
 - Create scenes as unsaved drafts and journal their first save with the world manifest. Author rooms, lights, spawns, transitions/trigger volumes and project entry points with complete-project validation and Undo across Save.

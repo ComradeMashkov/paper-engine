@@ -15,6 +15,7 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -62,6 +63,15 @@ int main(int argc, char** argv) {
                                            throw std::runtime_error("Invalid sequence syntax");
                                    }};
         options.textAssets.push_back(type);
+        options.nodePropertyDefaults = {
+            {"kind", ""},          {"detail", 0},
+            {"stateKey", ""},      {"visibleWhen", ""},
+            {"actions", ""},       {"itemInstance", ""},
+            {"openAngle", 0.0},    {"openOffset", ContentValue::array({0.0, 0.0, 0.0})},
+            {"legacyDoor", -1},    {"inspectResource", ""},
+            {"inspectScale", 1.5}, {"animation", -1},
+            {"pose", 0},           {"poses", ContentValue::array()}};
+        options.nodePropertyChoices["kind"] = {"", "Inspectable"};
         options.validateContent = [](const auto&, const std::map<fs::path, std::string>& sources) {
             for (const auto& [path, source] : sources)
                 if (path.extension() == ".txt" &&
@@ -285,6 +295,34 @@ int main(int argc, char** argv) {
         workspaceText->save();
         check(bytes(workspaceFile) == "ok valid reference\n",
               "Host source Save commits through journal");
+        scenes = child<QComboBox>(*window, "sceneList");
+        scenes->setCurrentIndex(scenes->findData("boxes.dcscene"));
+        auto* objects = child<QTreeWidget>(*window, "sceneHierarchy");
+        objects->setCurrentItem(objects->topLevelItem(0));
+        QTimer::singleShot(0, [&] {
+            auto* dialog = dynamic_cast<QDialog*>(QApplication::activeModalWidget());
+            try {
+                check(dialog, "Host object properties dialog");
+                dialog->resize(dialog->width(), 300);
+                QApplication::processEvents();
+                auto* scroll = child<QScrollArea>(*dialog, "objectPropertyScroll");
+                check(scroll->widgetResizable() && scroll->viewport()->height() <
+                                                       scroll->widget()->minimumSizeHint().height(),
+                      "Large host forms remain reachable through scrolling");
+                child<QComboBox>(*dialog, "kind")->setCurrentText("Inspectable");
+                click(*dialog, "applyObjectProperties");
+                if (dialog->isVisible())
+                    throw std::runtime_error(
+                        child<QLabel>(*dialog, "objectPropertyStatus")->text().toStdString());
+            } catch (const std::exception& e) {
+                callbackError = e.what();
+                if (dialog)
+                    dialog->done(QDialog::Rejected);
+            }
+        });
+        action("editObjectProperties");
+        check(callbackError.empty(), callbackError.c_str());
+        action("saveAll");
         const auto textFile = assets / "sequence.txt";
         std::ofstream(textFile) << "ok original\n";
         editor::TextAssetEditor text(textFile, assets, type);

@@ -1228,6 +1228,8 @@ class Window final : public QMainWindow {
             return;
         QDialog dialog(this);
         dialog.setWindowTitle(tr("Object Properties"));
+        constexpr int propertyDialogWidth = 740, propertyDialogHeight = 700;
+        dialog.resize(propertyDialogWidth, propertyDialogHeight);
         auto* layout = new QVBoxLayout(&dialog);
         auto* form = new PropertyForm;
         ContentValue values{
@@ -1250,8 +1252,13 @@ class Window final : public QMainWindow {
             if (room.scene == current_->data().at("scene").at("id").get<std::string>())
                 choices["room"].push_back(text(room.id));
         form->setValue(values, std::move(choices));
-        layout->addWidget(form);
+        auto* scroll = new QScrollArea;
+        scroll->setObjectName("objectPropertyScroll");
+        scroll->setWidgetResizable(true);
+        scroll->setWidget(form);
+        layout->addWidget(scroll);
         auto* status = new QLabel;
+        status->setObjectName("objectPropertyStatus");
         status->setWordWrap(true);
         layout->addWidget(status);
         auto* apply = new QPushButton(tr("Apply"));
@@ -1269,6 +1276,10 @@ class Window final : public QMainWindow {
                                 node[key] = value;
                 // Empty optional references mean absence, including inherited values.
                 candidate.replaceNodes(nodes);
+                if (edited.contains("kind") && edited.at("kind").is_string() &&
+                    !edited.at("kind").get<std::string>().empty() &&
+                    !project_->effective(candidate.node(selected_)).contains("bounds"))
+                    setEffectiveProperty(candidate, "bounds", defaultBounds());
                 for (const auto& [key, value] : edited.items())
                     if (value != values.at(key) && value.is_string() &&
                         value.get<std::string>().empty())
