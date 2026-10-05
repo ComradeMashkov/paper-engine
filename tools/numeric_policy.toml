@@ -52,8 +52,8 @@ reason = "Independent editable source bytes and temporary-file scenarios exercis
 literal_sha256 = "7df9c0c4617fa42da373dcd6bfbd364c3b083887a77c173870f745a2790579b4"
 
 ["tests/ui/ui_tests.cpp"]
-reason = "Independent logical-pixel, text-width, input-coordinate and slider/list fixtures verify flex bounds, clipping, wrapped height, capture/focus, scroll visibility and transactional layout."
-literal_sha256 = "6f14ee4c92fb16e38c25eda46b963d17563546d0079cc00f550b881f512ff632"
+reason = "Independent logical-pixel, text-width, input-coordinate and slider/list fixtures verify flex bounds, clipping, wrapped height, capture/focus, scroll visibility, transactional layout and transparent host panels under pointer origin/movement."
+literal_sha256 = "32cb308d52c748d16e7cac4c778f58d2b0c49623e91e9c240bee391b5c80191c"
 
 ["tests/ui/input_tests.cpp"]
 reason = "Independent ordered SDL edge/modifier/wheel samples verify host-to-UI event translation, repeat and focus/debug cancellation without constructing an application."

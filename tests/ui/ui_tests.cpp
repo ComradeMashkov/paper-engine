@@ -241,6 +241,22 @@ int main() {
                   scroll.offset() == 140,
               "Rejected scroll layout preserves published state");
     }
+    {
+        Theme theme;
+        theme.background = {0, 0, 0, 0};
+        Context layer([](auto, float) { return 0.f; }, theme);
+        Node root;
+        root.id = "transparent.layer";
+        layer.setTree(root);
+        layer.layout({0, 0, 400, 200});
+        const auto fills = layer.draw();
+        check(!fills.empty() && fills.front().color.a == 0,
+              "A transparent root remains transparent at the initial pointer origin");
+        const std::array move{Input{InputType::Move, {100, 100}}};
+        (void)layer.input(move);
+        check(layer.draw().front().color.a == 0,
+              "Hovering a container cannot cover host-painted content");
+    }
     std::cout << "UI failures=" << failures << '\n';
     return failures ? 1 : 0;
 }
