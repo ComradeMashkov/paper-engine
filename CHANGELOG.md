@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.14.0-alpha.1+build.18] - 2026-10-05
+
+- Provide `Paper::AudioCore` for bank definitions, bindings, acoustic zones and PCM mixing without SDL/Qt. Keep the existing `Paper::Audio` facade and functionality for device/WAV consumers. Headless game sessions can validate editable audio without acquiring a platform dependency.
+- Verification: all engine targets built, and all 18 standalone CTest cases passed, in Release and ASan/UBSan including Metal, storage/recovery, authoring, audio and UI. Version, numeric ownership and whitespace checks passed.
+- Compatibility: additive CMake target; the existing facade, audio bank version 2 and content formats are unchanged.
+
 ## [0.13.1-alpha.1+build.17] - 2026-10-05
 
 - Keep a slider's grab offset when its thumb is pressed off centre; apply the final release coordinate before ending capture. Preserve track-click snapping, quantization and cancellation.

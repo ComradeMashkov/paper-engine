@@ -1,5 +1,10 @@
 # Audio banks, bindings and acoustic zones
 
+`Paper::AudioCore` provides definitions, bank parsing/writing, bindings, zones and
+the PCM mixer without SDL or Qt. Use it for content validation and headless game
+logic. `Paper::Audio` adds WAV decoding and the SDL device facade and continues
+to include all core functionality for existing consumers.
+
 `Paper::Audio` accepts editable `paper.audio` TOML banks (`.pabank`, version 2).
 Version 1 remains readable with spatial source defaults; writers emit version 2.
 `parseAudioBank`, `writeAudioBank`, `loadAudioBank` and `validateAudioBank` validate
