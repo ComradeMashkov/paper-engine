@@ -347,4 +347,10 @@ void SceneDocument::acceptSaved(std::string source) {
     source_ = std::move(source);
     saved_ = data_;
 }
+void SceneDocument::rebaseSaved(std::string source) {
+    SceneDocument saved(path_, source);
+    require(saved.data().at("version") == data_.at("version"), "Recovery changed scene version");
+    source_ = std::move(source);
+    saved_ = saved.data();
+}
 } // namespace paper::authoring

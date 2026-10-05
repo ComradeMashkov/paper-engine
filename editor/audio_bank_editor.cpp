@@ -1,6 +1,7 @@
 #include "audio_bank_editor.hpp"
 #include "paper/audio/audio.hpp"
 #include "paper/audio/bank.hpp"
+#include "paper/content/document.hpp"
 #include "paper/resources/resource_store.hpp"
 #include "property_form.hpp"
 #include <QCloseEvent>
@@ -420,6 +421,44 @@ void AudioBankEditor::validate() const {
             if (!binding.node.empty() && std::ranges::find(nodes, binding.node) == nodes.end())
                 throw std::runtime_error("Unknown scene node binding: " + binding.node);
     (void)loadSoundBank(assets_, bank);
+}
+std::string AudioBankEditor::recoverySource() const {
+    if (!form_->isEnabled() || !form_->dirty())
+        return source_->toPlainText() == displayedBaseline_
+                   ? original()
+                   : source_->toPlainText().toUtf8().toStdString();
+    auto candidate = structure_;
+    const auto slash = selected_.find('/');
+    const auto key = selected_.substr(0, slash), id = selected_.substr(slash + 1);
+    const auto edited = form_->value();
+    const auto next = edited.at("id").get<std::string>();
+    for (auto& entry : candidate["bank"][key])
+        if (entry.at("id") == id)
+            entry = edited;
+    if (key == "sounds" && next != id) {
+        for (auto& source : candidate["bank"]["sources"])
+            if (source.at("sound") == id)
+                source["sound"] = next;
+        for (auto& zone : candidate["bank"]["zones"])
+            if (zone.at("ambience") == id)
+                zone["ambience"] = next;
+    }
+    return content::encode(candidate);
+}
+void AudioBankEditor::restoreSource(const std::string& source) {
+    stopAudition();
+    auto cursor = source_->textCursor();
+    cursor.beginEditBlock();
+    cursor.select(QTextCursor::Document);
+    cursor.insertText(QString::fromUtf8(source.data(), static_cast<qsizetype>(source.size())));
+    cursor.endEditBlock();
+}
+void AudioBankEditor::acceptSaved(const std::string& source) {
+    baseline_ = QByteArray::fromStdString(source);
+    QTextDocument saved;
+    saved.setPlainText(QString::fromUtf8(baseline_));
+    displayedBaseline_ = saved.toPlainText();
+    source_->document()->setModified(source_->toPlainText() != displayedBaseline_);
 }
 std::string AudioBankEditor::snapshot() {
     if (form_->isEnabled() && form_->dirty())

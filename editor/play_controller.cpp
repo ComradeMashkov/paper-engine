@@ -41,7 +41,13 @@ std::map<fs::path, Stamp> inventory(const fs::path& root,
                                     const std::shared_ptr<std::atomic_bool>& canceled) {
     std::map<fs::path, Stamp> result;
     uintmax_t bytes = 0;
-    for (const auto& entry : fs::recursive_directory_iterator(root)) {
+    for (auto iterator = fs::recursive_directory_iterator(root);
+         iterator != fs::recursive_directory_iterator(); ++iterator) {
+        const auto& entry = *iterator;
+        if (entry.path().filename() == ".paper-editor") {
+            iterator.disable_recursion_pending();
+            continue;
+        }
         if (*canceled)
             throw std::runtime_error("Play canceled.");
         if (entry.is_symlink())

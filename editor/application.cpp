@@ -6,6 +6,7 @@
 #include "paper/scenes/transforms.hpp"
 #include "play_controller.hpp"
 #include "project_migration.hpp"
+#include "project_storage.hpp"
 #include "property_form.hpp"
 #include "resource_browser.hpp"
 #include "ui_editor.hpp"
@@ -82,6 +83,7 @@ struct Project {
     std::map<std::string, ContentValue, std::less<>> templates;
     std::map<std::string, std::string, std::less<>> labels;
     std::unique_ptr<QLockFile> lock;
+    std::unique_ptr<ProjectStorage> storage;
     std::map<fs::path, std::string> sources;
     void verifySources() const {
         for (const auto& [path, original] : sources)
@@ -114,6 +116,9 @@ struct Project {
             if (!lock->tryLock())
                 throw std::runtime_error("Project is already open in another editor");
         }
+        storage = std::make_unique<ProjectStorage>(file);
+        if (acquireLock)
+            storage->finishSave();
         ResourceStore files(root);
         const auto world = readSource(files.resolve(manifest));
         for (const auto& relative : world.at("world").at("resources"))
@@ -428,13 +433,63 @@ class Window final : public QMainWindow {
             if (current_)
                 save(current_);
         });
-        auto* saveAll = file->addAction(tr("Save All Scenes"));
+        auto* saveAll = file->addAction(tr("Save All"));
+        saveAll->setObjectName("saveAll");
         saveAll->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
         connect(saveAll, &QAction::triggered, this, [this] {
             if (project_)
+                saveBatch(nullptr);
+        });
+        auto* finishSave = file->addAction(tr("Finish Interrupted Save"));
+        finishSave->setObjectName("finishSave");
+        connect(finishSave, &QAction::triggered, this, [this] {
+            if (!project_)
+                return;
+            try {
+                if (!project_->storage->finishSave())
+                    return;
                 for (const auto& [path, doc] : project_->scenes)
-                    if (!save(doc))
-                        break;
+                    doc->rebaseSaved(bytes(doc->path()));
+                for (auto& [path, source] : project_->sources)
+                    source = bytes(path);
+                const auto reconcile = [](auto* editor) {
+                    if (!editor || !editor->isVisible())
+                        return;
+                    const auto draft = editor->recoverySource();
+                    editor->acceptSaved(bytes(editor->file()));
+                    editor->restoreSource(draft);
+                };
+                reconcile(uiEditor_.get());
+                reconcile(audioEditor_.get());
+                recoveryDeferred_ = false;
+                requestPreview();
+                updateState();
+                autosaveProject();
+            } catch (const std::exception& e) {
+                problem(text(e.what()));
+            }
+        });
+        auto* autosave = file->addAction(tr("Create Recovery Snapshot"));
+        autosave->setObjectName("autosaveNow");
+        connect(autosave, &QAction::triggered, this, [this] { autosaveProject(); });
+        auto* restore = file->addAction(tr("Restore Recovery Snapshot…"));
+        restore->setObjectName("restoreRecovery");
+        connect(restore, &QAction::triggered, this, [this] { restoreRecovery(); });
+        auto* discardRecovery = file->addAction(tr("Discard Recovery Snapshot…"));
+        discardRecovery->setObjectName("discardRecovery");
+        connect(discardRecovery, &QAction::triggered, this, [this] {
+            if (project_ && QMessageBox::question(this, tr("Discard Recovery"),
+                                                  tr("Remove the recovery snapshot? Authored files "
+                                                     "and current drafts are unchanged."),
+                                                  QMessageBox::Discard | QMessageBox::Cancel,
+                                                  QMessageBox::Cancel) == QMessageBox::Discard) {
+                try {
+                    project_->storage->discardRecovery();
+                    recoveryDeferred_ = false;
+                } catch (const std::exception& e) {
+                    problem(text(e.what()));
+                }
+            }
         });
         auto* exit = file->addAction(tr("Close"));
         exit->setShortcut(QKeySequence::Quit);
@@ -692,6 +747,9 @@ class Window final : public QMainWindow {
         updateState();
         if (!options_.project.empty())
             openProject(options_.project);
+        autosaveTimer_.setInterval(autosaveMilliseconds);
+        connect(&autosaveTimer_, &QTimer::timeout, this, [this] { autosaveProject(); });
+        autosaveTimer_.start();
     }
 
     ~Window() override {
@@ -715,6 +773,15 @@ class Window final : public QMainWindow {
             setEnabled(false);
             event->ignore();
             return;
+        }
+        if (project_ && !recoveryDeferred_) {
+            try {
+                project_->storage->discardRecovery();
+            } catch (const std::exception& e) {
+                problem(text(e.what()));
+                event->ignore();
+                return;
+            }
         }
         QSettings settings;
         settings.setValue("window/geometry", saveGeometry());
@@ -913,6 +980,8 @@ class Window final : public QMainWindow {
     void openProject(const fs::path& path) {
         try {
             const bool same = project_ && fs::canonical(path) == project_->file;
+            if (same)
+                project_->storage->finishSave();
             auto candidate = std::make_unique<Project>(path, !same);
             // Validate before publishing project state; no Lua or game session is constructed.
             auto preview =
@@ -927,6 +996,7 @@ class Window final : public QMainWindow {
             ++revision_;
             undo_.clear();
             project_ = std::move(candidate);
+            recoveryDeferred_ = false;
             viewport_->audio(std::nullopt);
             package_ = std::move(preview.package);
             publishedRevision_ = revision_;
@@ -944,6 +1014,7 @@ class Window final : public QMainWindow {
             populateAssets();
             selectScene();
             updateState();
+            restoreRecovery();
         } catch (const std::exception& error) {
             problem(text(error.what()));
             QMessageBox::warning(this, tr("Cannot Open Project"), text(error.what()));
@@ -1551,41 +1622,162 @@ class Window final : public QMainWindow {
         populateSpawns();
         updateState();
     }
+    std::vector<StoredEdit> recoveryEdits() const {
+        std::vector<StoredEdit> edits;
+        for (const auto& [path, doc] : project_->scenes)
+            edits.push_back({doc->path(), doc->original(), doc->serialized()});
+        if (uiEditor_ && uiEditor_->isVisible())
+            edits.push_back(
+                {uiEditor_->file(), uiEditor_->original(), uiEditor_->recoverySource()});
+        if (audioEditor_ && audioEditor_->isVisible())
+            edits.push_back(
+                {audioEditor_->file(), audioEditor_->original(), audioEditor_->recoverySource()});
+        const bool changed =
+            std::ranges::any_of(edits, [](const auto& edit) { return edit.before != edit.after; });
+        if (!changed)
+            return {};
+        for (const auto& [path, source] : project_->sources)
+            edits.push_back({path, source, source});
+        return edits;
+    }
+    void autosaveProject() {
+        if (!project_ || recoveryDeferred_)
+            return;
+        try {
+            if (project_->storage->pendingSave())
+                return;
+            project_->storage->autosave(recoveryEdits());
+            autosaveError_.clear();
+        } catch (const std::exception& e) {
+            const auto error = text(e.what());
+            if (autosaveError_ != error) {
+                problem(tr("Recovery snapshot failed: ") + error);
+                autosaveError_ = error;
+            }
+        }
+    }
+    void restoreRecovery() {
+        if (!project_)
+            return;
+        try {
+            const auto edits = project_->storage->recovery();
+            if (edits.empty())
+                return;
+            const auto answer = QMessageBox::question(
+                this, tr("Recover Unsaved Work"),
+                tr("An unsaved recovery snapshot exists. Restore it as editable drafts? "
+                   "Discard removes the snapshot; Cancel keeps it for later."),
+                QMessageBox::Yes | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Yes);
+            if (answer == QMessageBox::Discard) {
+                project_->storage->discardRecovery();
+                return;
+            }
+            if (answer != QMessageBox::Yes) {
+                recoveryDeferred_ = true;
+                statusBar()->showMessage(
+                    tr("Recovery deferred; automatic snapshots paused until Restore or Discard."));
+                return;
+            }
+            auto documents = project_->snapshot();
+            for (const auto& edit : edits)
+                for (const auto& [path, doc] : project_->scenes)
+                    if (doc->path() == edit.file)
+                        documents[path] = content::parse(edit.after, edit.file.string());
+            const auto checked = compile(project_->root, project_->manifest, documents, options_);
+            if (!checked.package)
+                throw std::runtime_error(checked.error);
+            auto before = ContentValue::object(), after = ContentValue::object();
+            for (const auto& [path, doc] : project_->scenes) {
+                before[path.generic_string()] = doc->nodes();
+                after[path.generic_string()] = documents.at(path).at("scene").at("nodes");
+            }
+            if (before != after) {
+                undo_.push(new SceneCommand(
+                    [this, docs = project_->scenes,
+                     initial = checked.package](const ContentValue& state) mutable {
+                        for (const auto& [path, doc] : docs)
+                            doc->replaceNodes(state.at(path.generic_string()));
+                        ++revision_;
+                        selected_.clear();
+                        rebuildTree();
+                        updateState();
+                        if (initial)
+                            publish({std::move(initial), {}});
+                        else
+                            requestPreview();
+                    },
+                    std::move(before), std::move(after), tr("Recover Scenes")));
+            }
+            for (const auto& edit : edits) {
+                if (edit.before == edit.after ||
+                    std::ranges::any_of(project_->scenes, [&](const auto& scene) {
+                        return scene.second->path() == edit.file;
+                    }))
+                    continue;
+                editAsset(edit.file);
+                if (uiEditor_ && uiEditor_->file() == edit.file)
+                    uiEditor_->restoreSource(edit.after);
+                else if (audioEditor_ && audioEditor_->file() == edit.file)
+                    audioEditor_->restoreSource(edit.after);
+            }
+            recoveryDeferred_ = false;
+            autosaveProject();
+        } catch (const std::exception& e) {
+            recoveryDeferred_ = true;
+            problem(tr("Recovery retained: ") + text(e.what()));
+        }
+    }
     bool save(const std::shared_ptr<authoring::SceneDocument>& document) {
-        if (!document->dirty())
-            return true;
+        return saveBatch(document);
+    }
+    bool saveBatch(const std::shared_ptr<authoring::SceneDocument>& only) {
         try {
             project_->verifySources();
             const auto checked =
                 compile(project_->root, project_->manifest, project_->snapshot(), options_);
             if (!checked.package)
                 throw std::runtime_error(checked.error);
-            const auto output = document->serialized();
-            QSaveFile file(pathText(document->path()));
-            file.setDirectWriteFallback(false);
-            if (!file.open(QIODevice::WriteOnly))
-                throw std::runtime_error(file.errorString().toStdString());
-            if (file.write(output.data(), static_cast<qint64>(output.size())) !=
-                static_cast<qint64>(output.size()))
-                throw std::runtime_error(file.errorString().toStdString());
-            // Compare immediately before atomic replacement. Cooperating editors share the project
-            // lock.
-            project_->verifySources();
-            if (bytes(document->path()) != document->original()) {
-                file.cancelWriting();
-                throw std::runtime_error(
-                    "The file changed outside the editor. Saving was canceled; reconcile "
-                    "the changes and reopen the project.");
+            std::vector<StoredEdit> edits;
+            for (const auto& [path, doc] : project_->scenes)
+                edits.push_back({doc->path(), doc->original(),
+                                 !only || doc == only ? doc->serialized() : doc->original()});
+            if (!only) {
+                if (uiEditor_ && uiEditor_->isVisible()) {
+                    auto output = uiEditor_->snapshot();
+                    if (uiEditor_->recoverySource() == uiEditor_->original())
+                        output = uiEditor_->original();
+                    edits.push_back({uiEditor_->file(), uiEditor_->original(), std::move(output)});
+                }
+                if (audioEditor_ && audioEditor_->isVisible()) {
+                    auto output = audioEditor_->snapshot();
+                    if (audioEditor_->recoverySource() == audioEditor_->original())
+                        output = audioEditor_->original();
+                    edits.push_back(
+                        {audioEditor_->file(), audioEditor_->original(), std::move(output)});
+                }
             }
-            if (!file.commit())
-                throw std::runtime_error(file.errorString().toStdString());
-            document->acceptSaved(output);
+            for (const auto& [path, source] : project_->sources)
+                edits.push_back({path, source, source});
+            const bool changed =
+                std::ranges::any_of(edits, [](const auto& e) { return e.before != e.after; });
+            if (changed)
+                project_->storage->save(edits);
+            for (const auto& edit : edits) {
+                for (const auto& [path, doc] : project_->scenes)
+                    if (doc->path() == edit.file && (!only || doc == only))
+                        doc->acceptSaved(edit.after);
+                if (uiEditor_ && uiEditor_->file() == edit.file)
+                    uiEditor_->acceptSaved(edit.after);
+                if (audioEditor_ && audioEditor_->file() == edit.file)
+                    audioEditor_->acceptSaved(edit.after);
+            }
             publish(checked);
             updateState();
+            autosaveProject();
             return true;
         } catch (const std::exception& error) {
             problem(text(error.what()));
-            QMessageBox::warning(this, tr("Cannot Save Scene"), text(error.what()));
+            QMessageBox::warning(this, tr("Cannot Save Project"), text(error.what()));
             return false;
         }
     }
@@ -1599,15 +1791,12 @@ class Window final : public QMainWindow {
         if (dirty.empty())
             return true;
         const auto answer = QMessageBox::question(
-            this, tr("Unsaved Changes"),
-            tr("Save changed scenes before closing? Each scene is saved separately."),
+            this, tr("Unsaved Changes"), tr("Save changed scenes before closing?"),
             QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Cancel);
         if (answer == QMessageBox::Cancel)
             return false;
         if (answer == QMessageBox::Save)
-            for (const auto& doc : dirty)
-                if (!save(doc))
-                    return false;
+            return saveBatch(nullptr);
         return true;
     }
     void populateSpawns() {
@@ -1758,6 +1947,11 @@ class Window final : public QMainWindow {
     std::string selected_;
     QUndoStack undo_;
     QFutureWatcher<PreviewResult> worker_;
+    // Maximum ordinary crash-loss window; snapshots never overwrite authored files.
+    static constexpr int autosaveMilliseconds = 30000;
+    QTimer autosaveTimer_;
+    QString autosaveError_;
+    bool recoveryDeferred_ = false;
     size_t revision_ = 0, runningRevision_ = 0, publishedRevision_ = 0;
     bool updating_ = false, pendingPreview_ = false;
 };

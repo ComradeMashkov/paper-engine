@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.0-alpha.1+build.12] - 2026-10-05
+
+- Journal Save All across scene documents and open UI/audio banks before atomically replacing files. Validate every source before writing; retain interrupted intent for restart or explicit retry.
+- Capture separate automatic recovery snapshots every 30 seconds, including unapplied and invalid UI/audio property drafts. Offer Restore/Discard/Cancel; restore scenes as one Undo command and leave authored files untouched.
+- Bound journal decoding, reject duplicate targets, escaping/hidden paths and symlinks, and retain externally conflicting recovery data. Keep local recovery state out of Git and Play snapshots.
+- Verification on macOS: storage, component and authoring CTest cases passed in Release and ASan/UBSan, including an actual writer-process crash. Native copied-Boxes workspace checks passed through Save/reopen and isolated Play/Stop. Version, numeric ownership and whitespace checks passed.
+- Limits: individual file replacements become visible sequentially. The journal restores consistency after process failure; this does not provide isolation from non-cooperating writers or a filesystem-wide power-loss transaction.
+
 ## [0.9.0-alpha.1+build.11] - 2026-10-01
 
 - Expose collider bounds editing, initial fitting, category/mask authoring and

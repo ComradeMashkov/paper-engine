@@ -1,4 +1,5 @@
 #include "ui_editor.hpp"
+#include "paper/content/document.hpp"
 #include "paper/core/units.hpp"
 #include "paper/resources/resource_store.hpp"
 #include "property_form.hpp"
@@ -590,6 +591,43 @@ void UiEditor::validate() const {
     UiPreview checked;
     checked.document(
         ui::parseDocument(source_->toPlainText().toUtf8().toStdString(), file_.string()));
+}
+std::string UiEditor::recoverySource() const {
+    if (!form_->isEnabled() || !form_->dirty())
+        return source_->toPlainText() == displayedBaseline_
+                   ? original()
+                   : source_->toPlainText().toUtf8().toStdString();
+    auto candidate = value_;
+    const auto edited = form_->value();
+    if (selected_.empty()) {
+        candidate["ui"]["theme"] = edited.at("theme");
+        candidate["ui"]["viewport"] = edited.at("viewport");
+    } else {
+        const auto next = edited.at("id").get<std::string>();
+        for (auto& node : candidate["ui"]["nodes"])
+            if (node.at("id") == selected_)
+                node = edited;
+            else if (node.at("parent") == selected_)
+                node["parent"] = next;
+        if (candidate.at("ui").at("root") == selected_)
+            candidate["ui"]["root"] = next;
+    }
+    // Invalid drafts are recoverable, but never accepted as saved/runtime content.
+    return content::encode(candidate);
+}
+void UiEditor::restoreSource(const std::string& source) {
+    auto cursor = source_->textCursor();
+    cursor.beginEditBlock();
+    cursor.select(QTextCursor::Document);
+    cursor.insertText(QString::fromUtf8(source.data(), static_cast<qsizetype>(source.size())));
+    cursor.endEditBlock();
+}
+void UiEditor::acceptSaved(const std::string& source) {
+    baseline_ = QByteArray::fromStdString(source);
+    QTextDocument saved;
+    saved.setPlainText(QString::fromUtf8(baseline_));
+    displayedBaseline_ = saved.toPlainText();
+    source_->document()->setModified(source_->toPlainText() != displayedBaseline_);
 }
 std::string UiEditor::snapshot() {
     if (form_->isEnabled() && form_->dirty())

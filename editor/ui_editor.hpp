@@ -46,6 +46,9 @@ class UiEditor final : public QDialog {
     void validate() const;
     void save();
     [[nodiscard]] std::string snapshot();
+    [[nodiscard]] std::string recoverySource() const;
+    void restoreSource(const std::string& source);
+    void acceptSaved(const std::string& source);
     [[nodiscard]] const std::filesystem::path& file() const { return file_; }
     [[nodiscard]] std::string original() const { return baseline_.toStdString(); }
 

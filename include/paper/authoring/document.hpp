@@ -22,6 +22,8 @@ class SceneDocument {
     // Unsupported source layouts fail without producing a replacement file.
     std::string serialized() const;
     void acceptSaved(std::string source);
+    // Reconcile a completed journal while preserving current drafts and Undo values.
+    void rebaseSaved(std::string source);
 
   private:
     std::filesystem::path path_;

@@ -65,4 +65,8 @@ literal_sha256 = "6094a5b4fafca4c2894d969daf9b79a43eed61506fb537bdb1b2505b62d1cb
 
 ["tests/editor/component_tests.cpp"]
 reason = "Independent Qt editor fixtures cover every UI component, exact untouched values, interactive preview isolation, pending draft validation, structured audio and WAV bytes, dummy-device audition, source guards and transactional project-copy migration."
-literal_sha256 = "17131805b0265565ad23af8394d3a534b27b80f4aa06ccbd86717590bfc09628"
+literal_sha256 = "e096b0ced5828aa2e2c0d0f284305dfaf41d910c8f25aa7d54d492055a1f1fa4"
+
+["tests/editor/storage_tests.cpp"]
+reason = "Independent interrupted-write, external-conflict, malformed journal and actual child-process crash fixtures verify redo recovery and source isolation; exit status and timeout belong to the test harness."
+literal_sha256 = "ecd7932d6e2fa1924546a93bae9aeba5cbbad590ee24dbab50c98ad5c1da05ea"

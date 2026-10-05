@@ -136,6 +136,15 @@ int main(int argc, char** argv) {
         click(uiEditor, "applyUiProperties");
         check(source->toPlainText() == beforeDraft,
               "invalid property drafts retain the last authored UI");
+        const auto recoveredInvalid = uiEditor.recoverySource();
+        check(content::parse(recoveredInvalid, "recovery")
+                      .at("ui")
+                      .at("nodes")
+                      .back()
+                      .at("step")
+                      .get<double>() == 0,
+              "recovery captures unapplied invalid UI fields without publishing them");
+        check(source->toPlainText() == beforeDraft, "autosave does not apply pending forms");
         click(uiEditor, "undoUi");
         check(uiEditor.findChild<QComboBox*>("kind")->currentText() == "button",
               "Undo discards an unapplied invalid draft");
